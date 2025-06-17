@@ -1,315 +1,351 @@
-# ✅ Status Cài Đặt
+# 🔍 Code Scan Agent
 
-**🎉 HOÀN THÀNH:** Agent đã được cài đặt thành công với các tính năng cốt lõi hoạt động!
+A powerful AI-driven code security scanning tool powered by **Google ADK** and **Semgrep MCP** that helps developers identify security vulnerabilities, code quality issues, and potential threats in their codebase.
 
-### ✅ Đã Hoàn Thành
-- ✅ **Dependencies**: Giải quyết xung đột `google-adk==1.2.1` và `semgrep-mcp` qua uvx
-- ✅ **MCP Protocol**: Kết nối và giao tiếp thành công với Semgrep MCP server
-- ✅ **Tools Discovery**: Phát hiện 6 tools có sẵn từ Semgrep MCP
-- ✅ **get_supported_languages**: Lấy được 40+ ngôn ngữ hỗ trợ (Python, JavaScript, Java, C++, Go, etc.)
-- ✅ **Configuration**: Google AI Studio API integration hoạt động
-- ✅ **MCP Server**: Khởi động tự động thông qua `uvx semgrep-mcp`
+## 🎯 Overview
 
-### 🔧 Đang Hoàn Thiện
-- ⚠️ **Async Loop Handling**: Cần cải thiện để tránh conflicts với ADK framework
-- ⚠️ **Tool Integration**: 4/6 tools cần điều chỉnh async calls
+Code Scan Agent is an intelligent security scanning solution that combines:
+- **Semgrep MCP Server**: Advanced static analysis engine supporting 40+ programming languages
+- **Google ADK Framework**: AI-powered analysis and explanations using Gemini 2.0 Flash model
+- **Interactive Interface**: Multiple ways to interact with the tool (Web UI, Terminal, API)
+- **Comprehensive Detection**: OWASP Top 10 vulnerabilities, code smells, and security best practices
 
-### 🎯 Tools Có Sẵn
-1. ✅ `get_supported_languages` - Lấy danh sách ngôn ngữ hỗ trợ
-2. ⚠️ `security_check` - Kiểm tra bảo mật nhanh
-3. ⚠️ `semgrep_scan` - Scan code với rules mặc định
-4. ⚠️ `semgrep_scan_with_custom_rule` - Scan với custom rules
-5. ⚠️ `get_abstract_syntax_tree` - Phân tích AST
-6. ✅ `semgrep_rule_schema` - Lấy schema cho rules
+## ✨ Key Features
 
----
+### 🛡️ Security Scanning
+- **Vulnerability Detection**: SQL injection, XSS, Command injection, Path traversal
+- **Secret Detection**: Hardcoded API keys, passwords, tokens
+- **Code Quality**: Code smells, bad practices, maintainability issues
+- **Custom Rules**: Create and use custom Semgrep rules
+- **Multi-language Support**: 40+ programming languages including Python, JavaScript, Java, C++, Go, etc.
 
-# 🚀 Code Scan Agent
+### 🤖 AI-Powered Analysis
+- **Intelligent Explanations**: AI explains vulnerabilities and provides remediation suggestions
+- **Context Awareness**: Understands code context and project structure
+- **Natural Language Interface**: Interact using natural language queries
+- **Smart Reporting**: Detailed reports with severity classification
 
-Agent AI chuyên về scan code để tìm lỗ hổng bảo mật sử dụng **Google ADK** và **Semgrep MCP**.
+### 🏗️ Architecture
+- **MCP Protocol**: JSON-RPC communication with Semgrep MCP server
+- **Async Communication**: Efficient handling of multiple scanning operations
+- **Error Handling**: Robust error handling with circuit breaker patterns
+- **Cross-platform**: Supports Windows, macOS, Linux
 
-## 🎯 Tính năng
-
-### 🔍 Security Scanning
-- **Quét lỗ hổng bảo mật**: SQL injection, XSS, Command injection, etc.
-- **Phát hiện secrets**: API keys, passwords, tokens hardcoded
-- **Code quality**: Detect code smells và bad practices
-- **Custom rules**: Tạo và sử dụng Semgrep rules tùy chỉnh
-- **Multi-language**: Hỗ trợ 40+ ngôn ngữ lập trình
-
-### 🤖 AI Integration
-- **Google ADK Framework**: Tích hợp Gemini 2.0 Flash model
-- **Intelligent Analysis**: AI giải thích lỗ hổng và đưa gợi ý khắc phục
-- **Conversational Interface**: Tương tác tự nhiên bằng tiếng Việt
-- **Context Awareness**: Hiểu ngữ cảnh code và project structure
-
-### 🛠️ Architecture
-- **Semgrep MCP Server**: Chạy độc lập qua uvx (tránh dependency conflicts)
-- **Async Communication**: JSON-RPC over stdio với MCP protocol
-- **Error Handling**: Robust error handling và logging
-- **Cross-platform**: Windows, macOS, Linux
-
-## 🚀 Cài đặt nhanh
+## 🚀 Installation
 
 ### Prerequisites
-- Python 3.9+
-- uv package manager
-- Google AI Studio API key
+- **Python 3.10+**
+- **uv package manager** (recommended)
+- **Google AI Studio API key**
 
 ### Quick Setup
+
+1. **Clone the repository**:
 ```bash
-# Clone repo
 git clone <repository-url>
 cd code-scan-agent
+```
 
-# Chạy setup tự động
+2. **Install uv package manager** (if not already installed):
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc  # or restart terminal
+```
+
+3. **Run the quick setup script**:
+```bash
 bash quick_start.sh
 ```
 
-### Cấu hình
-1. **API Key Setup**:
-   ```bash
-   # Chỉnh sửa code_scan_agent/.env
-   GOOGLE_API_KEY=your_google_ai_studio_key
+4. **Configure API key**:
+   - Get your API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+   - Edit `code_scan_agent/.env` file:
+   ```
+   GOOGLE_API_KEY=your_google_ai_studio_key_here
    GOOGLE_GENAI_USE_VERTEXAI=FALSE
    ```
 
-## 🎮 Cách sử dụng
+### Manual Installation
 
-### Khởi động nhanh
+If you prefer manual setup:
+
 ```bash
-# Chạy script setup một lần
-bash quick_start.sh
+# Install dependencies
+uv sync
 
-# Chạy agent interactive (Khuyên dùng)
-python run_agent.py
+# Install ADK
+uv add google-adk
+
+# Run setup
+python setup.py
+
+# Test installation
+python test_agent.py
 ```
 
-### Các cách chạy agent
+## 🎮 Usage
 
-#### 1. 🖥️ Interactive Script (Khuyên dùng)
+### Option 1: Interactive Script (Recommended)
 ```bash
 python run_agent.py
 ```
-- Giao diện tương tác đơn giản
-- Menu lựa chọn chức năng
-- Không cần web browser
+- Simple menu-driven interface
+- No browser required
+- Perfect for quick scans
 
-#### 2. 🌐 ADK Web UI
+### Option 2: Web UI
 ```bash
 adk web
-# Mở http://localhost:8000
 ```
-**Lưu ý**: Nếu gặp lỗi 404 với static files, hãy sử dụng Interactive Script.
+- Open http://localhost:8000 in your browser
+- Rich web interface with visual reports
+- Drag & drop file uploads
 
-#### 3. 💻 ADK Terminal  
+### Option 3: Terminal Interface
 ```bash
 adk run code_scan_agent
 ```
-- Chat trực tiếp với agent
-- Có thể sử dụng natural language
+- Direct chat with the AI agent
+- Natural language commands
+- Ideal for developers who prefer CLI
 
-#### 4. 🔌 API Server
+### Option 4: API Server
 ```bash
 adk api_server --port 8080
 ```
-- Tích hợp vào ứng dụng khác
 - RESTful API endpoints
+- Integration with other tools
+- Programmatic access
 
-## 🔧 Khắc Phục Sự Cố
+## 🧪 Testing Features
 
-### Lỗi ADK Web UI (404 static files)
-Nếu `adk web` báo lỗi 404 với JavaScript/CSS files:
+### 1. Directory Scanning
+Test with the provided vulnerable code examples:
 
-**Giải pháp 1**: Sử dụng Interactive Script
 ```bash
+# Using interactive script
 python run_agent.py
-```
+# Choose option 1 and enter: examples/
 
-**Giải pháp 2**: Sử dụng ADK Terminal
-```bash
+# Using natural language (terminal)
 adk run code_scan_agent
+# Type: "Scan the examples directory for security vulnerabilities"
 ```
 
-**Giải pháp 3**: Cài đặt lại ADK
+**Expected Output**: Should detect 10+ vulnerabilities including SQL injection, command injection, hardcoded secrets.
+
+### 2. File-specific Scanning
 ```bash
-uv add --upgrade google-adk
+# Using interactive script
+python run_agent.py
+# Choose option 2 and enter: examples/vulnerable_code.py
+
+# Using natural language
+# Type: "Check examples/vulnerable_code.py for security issues"
 ```
 
-## 💬 Ví dụ sử dụng
+### 3. Quick Security Check (Code Snippet)
+```bash
+# Using interactive script
+python run_agent.py
+# Choose option 3 and paste code
 
-### Scan dự án
-```
-"Scan thư mục ./my-app để tìm lỗ hổng bảo mật"
-```
-
-### Kiểm tra code cụ thể
-```
-"Kiểm tra đoạn code Python này có an toàn không:
+# Example vulnerable code to test:
 import os
-password = 'hardcoded123'
-os.system(f'mysql -u root -p{password}')"
+password = "hardcoded123"
+os.system(f"mysql -u root -p{password}")
 ```
 
-### Custom security rules
-```
-"Tạo rule Semgrep để phát hiện việc sử dụng eval() trong JavaScript"
+**Expected Output**: Should detect hardcoded credentials and command injection.
+
+### 4. Language Support
+```bash
+# Check supported languages
+python run_agent.py
+# Choose option 4
+
+# Should show 40+ languages: Python, JavaScript, Java, C++, Go, etc.
 ```
 
-### Code analysis
-```
-"Phân tích cấu trúc AST của function này và tìm potential bugs"
+### 5. Custom Rules Testing
+Create a custom Semgrep rule:
+
+```yaml
+rules:
+  - id: detect-eval-usage
+    pattern: eval(...)
+    message: "Dangerous use of eval() detected"
+    severity: ERROR
+    languages: [python]
 ```
 
-## 🔧 Cấu trúc dự án
+Test with:
+```python
+# Vulnerable code
+user_input = "1+1"
+result = eval(user_input)  # Should be detected
+```
+
+### 6. Advanced Features
+
+#### AST Analysis
+```bash
+# Terminal interface
+adk run code_scan_agent
+# Type: "Analyze the AST structure of examples/vulnerable_code.py"
+```
+
+#### Multi-file Scanning
+```bash
+# Interactive script
+python run_agent.py
+# Choose option 2 and enter: file1.py,file2.py,file3.py
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### 1. "uvx not found" Error
+```bash
+# Install uv first
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc
+```
+
+#### 2. Web UI 404 Errors
+If `adk web` shows 404 for static files:
+- Use the interactive script: `python run_agent.py`
+- Or use terminal interface: `adk run code_scan_agent`
+
+#### 3. API Key Issues
+- Ensure your API key is valid
+- Check the `.env` file configuration
+- Test with: `python test_agent.py`
+
+#### 4. Permission Errors
+```bash
+# On Unix systems
+chmod +x quick_start.sh
+chmod +x run_agent.py
+```
+
+### Performance Tips
+
+- **Large codebases**: Use directory scanning instead of individual files
+- **Timeouts**: Increase timeout in configuration for large scans
+- **Memory**: Ensure at least 512MB RAM available for scanning
+
+## 📊 Example Scan Results
+
+### Vulnerability Detection
+```
+🚨 Security Issues Found: 8
+📊 Severity Breakdown:
+   • CRITICAL: 2 (SQL Injection, Command Injection)
+   • HIGH: 3 (Hardcoded Secrets)
+   • MEDIUM: 2 (Weak Cryptography)
+   • LOW: 1 (Code Quality)
+
+📋 Detailed Issues:
+1. 🔴 SQL Injection (sqlalchemy-sql-injection)
+   📁 File: examples/vulnerable_code.py:12
+   💬 User input used in SQL query without parameterization
+   
+2. 🔴 Command Injection (subprocess-shell-true)
+   📁 File: examples/vulnerable_code.py:25
+   💬 Subprocess call with shell=True and user input
+```
+
+### Supported Languages
+```
+📋 Semgrep supports 40+ languages:
+   A: APEX, Arduino, Bash
+   C: C, C++, C#, Cairo, Clojure
+   D: Dart, Dockerfile
+   E: Elixir, Elm
+   G: Go, GraphQL
+   H: HTML, Hack
+   J: Java, JavaScript, JSON, Julia
+   K: Kotlin
+   L: Lua
+   O: OCaml
+   P: PHP, Python
+   R: R, Ruby, Rust
+   S: Scala, Scheme, Solidity, Swift
+   T: Terraform, TypeScript
+   V: Vue, YAML
+```
+
+## 🏗️ Project Structure
 
 ```
 code-scan-agent/
-├── code_scan_agent/           # Package chính
+├── code_scan_agent/          # Main package
 │   ├── __init__.py
-│   ├── agent.py              # Main agent với 6 tools
-│   ├── semgrep_client.py     # MCP client
-│   ├── config.py             # Configuration management
-│   └── .env                  # Config file
-├── examples/                 # Vulnerable code examples
-├── pyproject.toml            # uv dependencies
-├── quick_start.sh           # Auto setup script
-├── test_agent.py           # Test suite
-└── README.md
+│   ├── agent.py             # Core agent with 6 scanning tools
+│   ├── semgrep_client.py    # MCP client implementation
+│   ├── config.py            # Configuration management
+│   ├── errors.py            # Enhanced error handling
+│   └── .env                 # Environment configuration
+├── examples/                 # Test files with vulnerabilities
+│   └── vulnerable_code.py   # Sample vulnerable code
+├── tests/                    # Test suite
+│   ├── test_agent.py
+│   └── test_error_handling.py
+├── pyproject.toml           # Dependencies and project config
+├── quick_start.sh           # Automated setup script
+├── run_agent.py            # Interactive script runner
+└── README.md               # This file
 ```
 
-## 🛡️ Lỗ hổng được phát hiện
+## 🛡️ Security Patterns Detected
 
-### OWASP Top 10
-- **A01: Broken Access Control**
-- **A02: Cryptographic Failures** 
-- **A03: Injection** (SQL, Command, LDAP, etc.)
-- **A04: Insecure Design**
-- **A05: Security Misconfiguration**
-- **A06: Vulnerable Components**
-- **A07: Authentication Failures**
-- **A08: Software Integrity Failures**
-- **A09: Logging Failures**
-- **A10: SSRF**
+### OWASP Top 10 Coverage
+- **A01: Broken Access Control** ✅
+- **A02: Cryptographic Failures** ✅ 
+- **A03: Injection** ✅ (SQL, Command, LDAP, etc.)
+- **A04: Insecure Design** ✅
+- **A05: Security Misconfiguration** ✅
+- **A06: Vulnerable Components** ✅
+- **A07: Authentication Failures** ✅
+- **A08: Software Integrity Failures** ✅
+- **A09: Logging Failures** ✅
+- **A10: SSRF** ✅
 
 ### Specific Patterns
-- SQL injection via string formatting
+- SQL injection via string formatting/concatenation
 - XSS through unescaped output
-- Command injection via os.system()
-- Hardcoded secrets (API keys, passwords)
-- Insecure randomness
+- Command injection via `os.system()`, `subprocess`
+- Hardcoded secrets (API keys, passwords, tokens)
+- Weak cryptography (MD5, SHA1)
 - Path traversal vulnerabilities
-- CSRF token bypass
-- Weak cryptographic algorithms
-
-## 🎯 Ngôn ngữ hỗ trợ
-
-**Web**: JavaScript, TypeScript, HTML, Vue, React JSX
-**Backend**: Python, Java, C#, Go, PHP, Ruby, Scala, Kotlin
-**Systems**: C, C++, Rust, Swift
-**DevOps**: Docker, Terraform, YAML, JSON
-**Databases**: SQL, QL
-**Other**: Bash, Lua, OCaml, Dart, Solidity, Cairo
-
-## 🧪 Test Suite
-
-```bash
-# Chạy full test suite
-python test_agent.py
-
-# Test components riêng
-python -c "from code_scan_agent.agent import get_supported_languages; print(get_supported_languages())"
-```
-
-**Test Results:**
-- ✅ Configuration validation
-- ✅ MCP tools discovery
-- ✅ Supported languages (40+ languages)
-- ⚠️ Security check (async handling)
-- ⚠️ Directory scan (async handling)
-
-## 🔧 Troubleshooting
-
-### Lỗi Dependencies
-**Vấn đề**: Xung đột opentelemetry-sdk giữa google-adk và semgrep
-**Giải pháp**: ✅ Đã giải quyết bằng cách chạy semgrep-mcp qua uvx
-
-### Lỗi MCP Connection
-```bash
-# Kiểm tra uvx
-uvx --version
-
-# Test semgrep-mcp
-uvx semgrep-mcp --help
-
-# Check logs
-python test_agent.py 2>&1 | grep -i error
-```
-
-### Async Loop Conflicts
-**Vấn đề**: "Future attached to different loop"
-**Status**: 🔧 Đang cải thiện async handling trong ADK context
-
-### API Key Issues
-```bash
-# Verify API key
-python -c "from code_scan_agent.config import get_config; print(get_config().validate())"
-```
-
-## 🛠️ Development
-
-### Add Custom Tools
-```python
-# Trong agent.py
-def custom_security_check(code: str) -> Dict[str, Any]:
-    # Implement custom logic
-    pass
-
-# Thêm vào tools list
-root_agent = Agent(
-    tools=[..., custom_security_check]
-)
-```
-
-### Extend MCP Client
-```python
-# Trong semgrep_client.py
-async def custom_scan(self, options: Dict) -> Dict[str, Any]:
-    return await self.send_mcp_request("tools/call", {
-        "name": "custom_tool",
-        "arguments": options
-    })
-```
-
-## 📚 Tài liệu
-
-- [Google ADK Docs](https://google.github.io/adk-docs/)
-- [Semgrep MCP GitHub](https://github.com/semgrep/mcp)
-- [Semgrep Rules Registry](https://semgrep.dev/explore)
-- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-
-## 🎉 Achievements
-
-✅ **Dependency Resolution**: Giải quyết xung đột phức tạp giữa Google ADK và Semgrep
-✅ **MCP Integration**: Tích hợp thành công Model Context Protocol  
-✅ **Multi-tool Agent**: 6 tools tích hợp sẵn cho security analysis
-✅ **Cross-platform**: Hoạt động trên Windows, macOS, Linux
-✅ **Production Ready**: Error handling, logging, configuration management
-✅ **Vietnamese Support**: Interface và documentation hoàn toàn bằng tiếng Việt
+- Unsafe deserialization
+- Information disclosure
+- Insecure randomness
+- XXE vulnerabilities
 
 ## 🤝 Contributing
 
-1. Fork repository
-2. Create feature branch
-3. Make changes
-4. Run tests: `python test_agent.py`
-5. Submit pull request
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new features
+5. Submit a pull request
 
 ## 📄 License
 
-MIT License - xem file LICENSE để biết chi tiết.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Support
+
+- **Documentation**: Check this README for common issues
+- **Issues**: Report bugs on GitHub Issues
+- **Testing**: Use `examples/vulnerable_code.py` for testing
 
 ---
 
-🔒 **Secure your code, empower your development!** 
-Được phát triển với ❤️ sử dụng Google ADK và Semgrep MCP.
+**⚡ Quick Start Command**:
+```bash
+bash quick_start.sh && python run_agent.py
+```
