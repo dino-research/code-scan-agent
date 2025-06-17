@@ -20,7 +20,6 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union
 
-from google.adk.agents import Agent
 from .semgrep_client import SemgrepSyncClient, SemgrepMCPError, SemgrepServerError
 from .errors import (
     ErrorCode, ErrorSeverity, CodeScanException, error_handler,
@@ -34,6 +33,13 @@ logger = logging.getLogger(__name__)
 # Thread-safe client management với improved lifecycle
 _client_lock = threading.Lock()
 _semgrep_client = None
+
+# Prefer LlmAgent from ADK if available
+try:
+    from google.adk.agents import LlmAgent as ADKAgent  # type: ignore
+except ImportError:  # pragma: no cover
+    # Sử dụng custom Agent từ intelligent.agents
+    from .intelligent.agents import Agent as ADKAgent
 
 
 def get_semgrep_client() -> SemgrepSyncClient:
@@ -238,8 +244,13 @@ def format_scan_results(raw_result: Dict[str, Any], context: str = "") -> Dict[s
                 try:
                     # Parse nested JSON from text field
                     import json
-                    parsed_data = json.loads(first_content["text"])
-                    findings = parsed_data.get("results", [])
+                    text_content = first_content.get("text", "")
+                    if text_content.strip():
+                        parsed_data = json.loads(text_content)
+                        findings = parsed_data.get("results", [])
+                    else:
+                        logger.warning("Empty text content in scan result")
+                        findings = []
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse nested JSON: {e}")
                     findings = []
@@ -269,12 +280,18 @@ def format_scan_results(raw_result: Dict[str, Any], context: str = "") -> Dict[s
                 
                 # Collect high severity findings
                 if severity in ["error", "warning"]:
+                    file_path = finding.get("path", "unknown")
+                    # Ensure we show full relative path from scan root
+                    if file_path != "unknown" and not file_path.startswith("/"):
+                        file_path = f"./{file_path}"
+                    
                     high_severity_findings.append({
                         "rule_id": finding.get("check_id", "unknown"),
                         "message": finding.get("extra", {}).get("message", "No message"),
                         "severity": severity,
-                        "file": finding.get("path", "unknown"),
-                        "line": finding.get("start", {}).get("line", "unknown")
+                        "file_path": file_path,  # Use more descriptive key
+                        "line": finding.get("start", {}).get("line", "unknown"),
+                        "absolute_path": finding.get("path", "unknown")  # Keep original for reference
                     })
         
         summary = f"🔍 Tìm thấy {findings_count} vấn đề{' trong ' + context if context else ''}"
@@ -299,13 +316,14 @@ def format_scan_results(raw_result: Dict[str, Any], context: str = "") -> Dict[s
 
 
 @handle_errors("agent", "scan_code_directory")  
-def scan_code_directory(directory_path: str, config: Optional[str] = None) -> Dict[str, Any]:
+def scan_code_directory(directory_path: str, config: Optional[str] = None, intelligent: bool = True) -> Dict[str, Any]:
     """
-    Scan toàn bộ thư mục code để tìm lỗ hổng bảo mật với enhanced error handling
+    Scan toàn bộ thư mục code để tìm lỗ hổng bảo mật với intelligent optimization
     
     Args:
         directory_path (str): Đường dẫn đến thư mục cần scan
         config (str, optional): Cấu hình Semgrep (ví dụ: 'auto', 'p/security-audit')
+        intelligent (bool): Sử dụng intelligent scanning với workflow agents (mặc định: True)
         
     Returns:
         dict: Kết quả scan bao gồm các lỗ hổng tìm thấy
@@ -313,6 +331,29 @@ def scan_code_directory(directory_path: str, config: Optional[str] = None) -> Di
     try:
         # Validate input
         validated_path = validate_directory_path(directory_path)
+        
+        # Intelligent scanning mode
+        if intelligent:
+            logger.info("Using intelligent scanning with ADK workflow agents")
+            try:
+                from .intelligent.scanner import intelligent_scan_code_directory
+                result = intelligent_scan_code_directory(str(validated_path))
+                
+                # Add scan metadata
+                result.update({
+                    "scan_type": "intelligent_directory",
+                    "scan_target": str(validated_path),
+                    "intelligent_features": True
+                })
+                
+                return result
+                
+            except Exception as e:
+                logger.warning(f"Intelligent scanning failed, falling back to traditional: {e}")
+                # Fall through to traditional scanning
+        
+        # Traditional scanning mode (fallback hoặc khi config được chỉ định)
+        logger.info("Using traditional scanning mode")
         
         # Validate config if provided
         if config and not config.strip():
@@ -329,9 +370,10 @@ def scan_code_directory(directory_path: str, config: Optional[str] = None) -> Di
             
             # Add metadata
             formatted_result.update({
-                "scan_type": "directory",
+                "scan_type": "traditional_directory",
                 "scan_target": str(validated_path),
-                "config_used": config or "default"
+                "config_used": config or "default",
+                "intelligent_features": False
             })
             
             return formatted_result
@@ -363,17 +405,39 @@ def scan_code_directory(directory_path: str, config: Optional[str] = None) -> Di
         )
 
 
-def scan_code_files(file_paths: List[str], config: Optional[str] = None) -> Dict[str, Any]:
+def scan_code_files(file_paths: List[str], config: Optional[str] = None, intelligent: bool = True) -> Dict[str, Any]:
     """
-    Scan các file code cụ thể để tìm lỗ hổng bảo mật với improved validation
+    Scan các file code cụ thể để tìm lỗ hổng bảo mật với intelligent workflow
     
     Args:
         file_paths (List[str]): Danh sách đường dẫn file cần scan
         config (str, optional): Cấu hình Semgrep
+        intelligent (bool): Sử dụng intelligent workflow (mặc định: True)
         
     Returns:
-        dict: Kết quả scan
+        dict: Kết quả scan với intelligent enhancements
     """
+    # Intelligent workflow mode
+    if intelligent:
+        try:
+            from .intelligent.workflows import apply_intelligent_workflow
+            
+            @apply_intelligent_workflow("scan_code_files")
+            def intelligent_scan_files(files, cfg=None):
+                return _scan_code_files_traditional(files, cfg)
+            
+            return intelligent_scan_files(file_paths, config)
+            
+        except Exception as e:
+            logger.warning(f"Intelligent workflow failed, falling back to traditional: {e}")
+            # Fall through to traditional scanning
+    
+    # Traditional scanning mode
+    return _scan_code_files_traditional(file_paths, config)
+
+
+def _scan_code_files_traditional(file_paths: List[str], config: Optional[str] = None) -> Dict[str, Any]:
+    """Traditional scan code files implementation"""
     try:
         # Validate input
         validated_paths = validate_file_paths(file_paths)
@@ -432,17 +496,39 @@ def scan_code_files(file_paths: List[str], config: Optional[str] = None) -> Dict
         }
 
 
-def quick_security_check(code_content: str, language: str) -> Dict[str, Any]:
+def quick_security_check(code_content: str, language: str, intelligent: bool = True) -> Dict[str, Any]:
     """
-    Thực hiện kiểm tra bảo mật nhanh cho một đoạn code với validation
+    Thực hiện kiểm tra bảo mật nhanh với intelligent analysis
     
     Args:
         code_content (str): Nội dung code cần kiểm tra
         language (str): Ngôn ngữ lập trình (ví dụ: python, javascript, java)
+        intelligent (bool): Sử dụng intelligent workflow (mặc định: True)
         
     Returns:
-        dict: Kết quả kiểm tra bảo mật
+        dict: Kết quả kiểm tra bảo mật với intelligent enhancements
     """
+    # Intelligent workflow mode
+    if intelligent:
+        try:
+            from .intelligent.workflows import apply_intelligent_workflow
+            
+            @apply_intelligent_workflow("quick_security_check")
+            def intelligent_quick_security_check(code, lang):
+                return _quick_security_check_traditional(code, lang)
+            
+            return intelligent_quick_security_check(code_content, language)
+            
+        except Exception as e:
+            logger.warning(f"Intelligent workflow failed, falling back to traditional: {e}")
+            # Fall through to traditional checking
+    
+    # Traditional checking mode
+    return _quick_security_check_traditional(code_content, language)
+
+
+def _quick_security_check_traditional(code_content: str, language: str) -> Dict[str, Any]:
+    """Traditional quick security check implementation"""
     try:
         # Validate input
         if not code_content or not code_content.strip():
@@ -526,18 +612,40 @@ def quick_security_check(code_content: str, language: str) -> Dict[str, Any]:
         }
 
 
-def scan_with_custom_rule(code_content: str, rule: str, language: str = "python") -> Dict[str, Any]:
+def scan_with_custom_rule(code_content: str, rule: str, language: str = "python", intelligent: bool = True) -> Dict[str, Any]:
     """
-    Scan code với custom Semgrep rule
+    Scan code với custom Semgrep rule và intelligent analysis
     
     Args:
         code_content (str): Nội dung code cần scan
         rule (str): Custom Semgrep rule (YAML format)
         language (str): Ngôn ngữ lập trình
+        intelligent (bool): Sử dụng intelligent workflow (mặc định: True)
         
     Returns:
-        dict: Kết quả scan
+        dict: Kết quả scan với intelligent enhancements
     """
+    # Intelligent workflow mode
+    if intelligent:
+        try:
+            from .intelligent.workflows import apply_intelligent_workflow
+            
+            @apply_intelligent_workflow("scan_with_custom_rule")
+            def intelligent_scan_with_custom_rule(code, r, lang):
+                return _scan_with_custom_rule_traditional(code, r, lang)
+            
+            return intelligent_scan_with_custom_rule(code_content, rule, language)
+            
+        except Exception as e:
+            logger.warning(f"Intelligent workflow failed, falling back to traditional: {e}")
+            # Fall through to traditional scanning
+    
+    # Traditional scanning mode
+    return _scan_with_custom_rule_traditional(code_content, rule, language)
+
+
+def _scan_with_custom_rule_traditional(code_content: str, rule: str, language: str = "python") -> Dict[str, Any]:
+    """Traditional custom rule scan implementation"""
     try:
         # Validate input
         if not code_content or not code_content.strip():
@@ -610,13 +718,37 @@ def scan_with_custom_rule(code_content: str, rule: str, language: str = "python"
         }
 
 
-def get_supported_languages() -> Dict[str, Any]:
+def get_supported_languages(intelligent: bool = True) -> Dict[str, Any]:
     """
-    Lấy danh sách ngôn ngữ lập trình được hỗ trợ bởi Semgrep
+    Lấy danh sách ngôn ngữ lập trình được hỗ trợ với intelligent enhancements
+    
+    Args:
+        intelligent (bool): Sử dụng intelligent workflow (mặc định: True)
     
     Returns:
-        dict: Danh sách ngôn ngữ và thông tin liên quan
+        dict: Danh sách ngôn ngữ và thông tin liên quan với intelligent features
     """
+    # Intelligent workflow mode
+    if intelligent:
+        try:
+            from .intelligent.workflows import apply_intelligent_workflow
+            
+            @apply_intelligent_workflow("get_supported_languages")
+            def intelligent_get_supported_languages():
+                return _get_supported_languages_traditional()
+            
+            return intelligent_get_supported_languages()
+            
+        except Exception as e:
+            logger.warning(f"Intelligent workflow failed, falling back to traditional: {e}")
+            # Fall through to traditional mode
+    
+    # Traditional mode
+    return _get_supported_languages_traditional()
+
+
+def _get_supported_languages_traditional() -> Dict[str, Any]:
+    """Traditional get supported languages implementation"""
     try:
         with get_semgrep_client() as client:
             languages = client.get_supported_languages()
@@ -653,17 +785,39 @@ def get_supported_languages() -> Dict[str, Any]:
         }
 
 
-def analyze_code_structure(code_content: str, language: str) -> Dict[str, Any]:
+def analyze_code_structure(code_content: str, language: str, intelligent: bool = True) -> Dict[str, Any]:
     """
-    Phân tích cấu trúc code bằng Abstract Syntax Tree (AST)
+    Phân tích cấu trúc code bằng Abstract Syntax Tree với intelligent enhancements
     
     Args:
         code_content (str): Nội dung code cần phân tích
         language (str): Ngôn ngữ lập trình
+        intelligent (bool): Sử dụng intelligent workflow (mặc định: True)
         
     Returns:
-        dict: Cấu trúc AST và thông tin phân tích
+        dict: Cấu trúc AST và thông tin phân tích với intelligent features
     """
+    # Intelligent workflow mode
+    if intelligent:
+        try:
+            from .intelligent.workflows import apply_intelligent_workflow
+            
+            @apply_intelligent_workflow("analyze_code_structure")
+            def intelligent_analyze_code_structure(code, lang):
+                return _analyze_code_structure_traditional(code, lang)
+            
+            return intelligent_analyze_code_structure(code_content, language)
+            
+        except Exception as e:
+            logger.warning(f"Intelligent workflow failed, falling back to traditional: {e}")
+            # Fall through to traditional analysis
+    
+    # Traditional analysis mode
+    return _analyze_code_structure_traditional(code_content, language)
+
+
+def _analyze_code_structure_traditional(code_content: str, language: str) -> Dict[str, Any]:
+    """Traditional code structure analysis implementation"""
     try:
         # Validate input
         if not code_content or not code_content.strip():
@@ -711,13 +865,37 @@ def analyze_code_structure(code_content: str, language: str) -> Dict[str, Any]:
         }
 
 
-def get_semgrep_rule_schema() -> Dict[str, Any]:
+def get_semgrep_rule_schema(intelligent: bool = True) -> Dict[str, Any]:
     """
-    Lấy schema định nghĩa cho Semgrep rules
+    Lấy schema định nghĩa cho Semgrep rules với intelligent enhancements
+    
+    Args:
+        intelligent (bool): Sử dụng intelligent workflow (mặc định: True)
     
     Returns:
-        dict: Schema và documentation cho việc tạo custom rules
+        dict: Schema và documentation cho việc tạo custom rules với intelligent features
     """
+    # Intelligent workflow mode
+    if intelligent:
+        try:
+            from .intelligent.workflows import apply_intelligent_workflow
+            
+            @apply_intelligent_workflow("get_semgrep_rule_schema")
+            def intelligent_get_semgrep_rule_schema():
+                return _get_semgrep_rule_schema_traditional()
+            
+            return intelligent_get_semgrep_rule_schema()
+            
+        except Exception as e:
+            logger.warning(f"Intelligent workflow failed, falling back to traditional: {e}")
+            # Fall through to traditional mode
+    
+    # Traditional mode
+    return _get_semgrep_rule_schema_traditional()
+
+
+def _get_semgrep_rule_schema_traditional() -> Dict[str, Any]:
+    """Traditional get semgrep rule schema implementation"""
     try:
         with get_semgrep_client() as client:
             result = client.get_rule_schema()
@@ -748,16 +926,191 @@ def get_semgrep_rule_schema() -> Dict[str, Any]:
         }
 
 
-def analyze_project_architecture(directory_path: str) -> Dict[str, Any]:
+@handle_errors("agent", "intelligent_project_analysis")
+def intelligent_project_analysis(directory_path: str) -> Dict[str, Any]:
     """
-    Phân tích kiến trúc và cấu trúc bảo mật của toàn bộ project
+    Analyze project with intelligent workflow để xác định scan strategy tối ưu
+    
+    Args:
+        directory_path (str): Đường dẫn thư mục project cần analyze
+        
+    Returns:
+        dict: Kết quả phân tích và recommendations
+    """
+    try:
+        # Validate input
+        validated_path = validate_directory_path(directory_path)
+        
+        # Use intelligent scanner for analysis
+        try:
+            from .intelligent.scanner import IntelligentCodeScanner
+            scanner = IntelligentCodeScanner()
+            
+            # Run rule analysis
+            rule_results = scanner.rule_analysis_agent.analyze_project_rules(str(validated_path))
+            
+            # If rule analysis succeeded, run pattern analysis
+            if rule_results.get("status") == "success":
+                languages = rule_results.get("analysis", {}).get("languages_detected", [])
+                pattern_results = scanner.code_pattern_agent.analyze_code_patterns(
+                    str(validated_path), languages
+                )
+            else:
+                pattern_results = {"status": "error", "error": "Rule analysis failed"}
+            
+            # Generate recommendations
+            recommendations = _generate_intelligent_recommendations(
+                rule_results,
+                pattern_results
+            )
+            
+            # Determine optimal strategy
+            optimal_strategy = _determine_optimal_strategy(rule_results, pattern_results)
+            
+            return {
+                "status": "success",
+                "rule_analysis": rule_results,
+                "pattern_analysis": pattern_results,
+                "recommendations": recommendations,
+                "optimal_scan_strategy": optimal_strategy
+            }
+            
+        except Exception as e:
+            logger.error(f"Intelligent project analysis failed: {e}")
+            raise CodeScanException(
+                code=ErrorCode.INTELLIGENT_ANALYSIS_FAILED,
+                message=f"Intelligent project analysis failed: {str(e)}",
+                severity=ErrorSeverity.MEDIUM,
+                component="agent",
+                operation="intelligent_project_analysis",
+                original_exception=e
+            )
+        
+    except CodeScanException:
+        raise
+    except Exception as e:
+        raise CodeScanException(
+            code=ErrorCode.UNEXPECTED_ERROR,
+            message=f"Unexpected error analyzing project: {str(e)}",
+            severity=ErrorSeverity.MEDIUM,
+            component="agent",
+            operation="intelligent_project_analysis",
+            original_exception=e,
+            additional_data={"directory_path": directory_path}
+        )
+
+
+def _generate_intelligent_recommendations(rule_analysis: Dict, pattern_analysis: Dict) -> List[str]:
+    """Generate recommendations based on intelligent analysis"""
+    recommendations = []
+    
+    # Rule-based recommendations
+    if rule_analysis.get('status') == 'success':
+        analysis = rule_analysis.get('analysis', {})
+        languages = analysis.get('languages_detected', [])
+        frameworks = analysis.get('frameworks_detected', [])
+        rules = analysis.get('recommended_rules', [])
+        
+        if len(languages) > 1:
+            recommendations.append(f"Multi-language project detected ({len(languages)} languages). Consider using language-specific scan configurations.")
+        
+        if frameworks:
+            recommendations.append(f"Framework-specific security rules recommended for: {', '.join(frameworks)}")
+        
+        if len(rules) > 5:
+            recommendations.append("Many security rules applicable. Consider prioritizing based on project risk assessment.")
+    
+    # Pattern-based recommendations  
+    if pattern_analysis.get('status') == 'success':
+        pattern_data = pattern_analysis.get('pattern_analysis', {})
+        risk_patterns = pattern_data.get('risk_patterns', [])
+        scan_priorities = pattern_data.get('scan_priorities', {})
+        
+        high_risk = [p for p in risk_patterns if p.get('severity') == 'high']
+        if high_risk:
+            recommendations.append(f"High-risk security patterns detected in {len(high_risk)} categories. Immediate security review recommended.")
+        
+        priority_level = scan_priorities.get('priority_level', 'medium')
+        if priority_level == 'high':
+            recommendations.append("High-priority security scan recommended due to detected risk factors.")
+        elif priority_level == 'low':
+            recommendations.append("Quick security scan may be sufficient for this project profile.")
+    
+    # Add general intelligent scanning recommendation
+    recommendations.append("Use intelligent scanning mode for optimized rule selection and better performance.")
+    
+    return recommendations[:8]  # Limit to top 8 recommendations
+
+
+def _determine_optimal_strategy(rule_analysis: Dict, pattern_analysis: Dict) -> Dict[str, Any]:
+    """Determine optimal scanning strategy based on analysis"""
+    strategy = {
+        "recommended_approach": "intelligent_scan",
+        "confidence_level": "medium"
+    }
+    
+    # Analyze confidence based on successful analysis steps
+    success_count = 0
+    if rule_analysis.get('status') == 'success':
+        success_count += 1
+        strategy["rule_optimization"] = "available"
+    
+    if pattern_analysis.get('status') == 'success':
+        success_count += 1
+        strategy["pattern_optimization"] = "available"
+        
+        # Extract priority information
+        pattern_data = pattern_analysis.get('pattern_analysis', {})
+        scan_priorities = pattern_data.get('scan_priorities', {})
+        priority_level = scan_priorities.get('priority_level', 'medium')
+        
+        strategy["scan_priority"] = priority_level
+        strategy["recommended_scan_approach"] = scan_priorities.get('recommended_scan_approach', 'targeted_scan')
+    
+    # Set confidence level
+    if success_count == 2:
+        strategy["confidence_level"] = "high"
+    elif success_count == 1:
+        strategy["confidence_level"] = "medium"
+    else:
+        strategy["confidence_level"] = "low"
+        strategy["recommended_approach"] = "traditional_scan"
+    
+    return strategy
+
+
+def analyze_project_architecture(directory_path: str, intelligent: bool = True) -> Dict[str, Any]:
+    """
+    Phân tích kiến trúc và cấu trúc bảo mật với intelligent enhancements
     
     Args:
         directory_path (str): Đường dẫn đến thư mục project
+        intelligent (bool): Sử dụng intelligent workflow (mặc định: True)
         
     Returns:
-        dict: Phân tích kiến trúc, recommendations bảo mật và best practices
+        dict: Phân tích kiến trúc, recommendations bảo mật và best practices với intelligent features
     """
+    # Intelligent workflow mode
+    if intelligent:
+        try:
+            from .intelligent.workflows import apply_intelligent_workflow
+            
+            @apply_intelligent_workflow("analyze_project_architecture")
+            def intelligent_analyze_project_architecture(dir):
+                return _analyze_project_architecture_traditional(dir)
+            
+            return intelligent_analyze_project_architecture(directory_path)
+            
+        except Exception as e:
+            logger.warning(f"Intelligent workflow failed, falling back to traditional: {e}")
+            # Fall through to traditional analysis
+    
+    # Traditional analysis mode
+    return _analyze_project_architecture_traditional(directory_path)
+
+
+def _analyze_project_architecture_traditional(directory_path: str) -> Dict[str, Any]:
+    """Traditional project architecture analysis implementation"""
     try:
         # Validate directory path
         validated_path = validate_directory_path(directory_path)
@@ -1071,7 +1424,7 @@ def analyze_project_architecture(directory_path: str) -> Dict[str, Any]:
 
 
 # Định nghĩa root agent với ADK
-root_agent = Agent(
+root_agent = ADKAgent(
     name="code_scan_agent",
     model="gemini-2.0-flash",
     description=(
@@ -1111,6 +1464,7 @@ root_agent = Agent(
         get_supported_languages,
         analyze_code_structure,
         analyze_project_architecture,
-        get_semgrep_rule_schema
+        get_semgrep_rule_schema,
+        intelligent_project_analysis
     ],
 ) 

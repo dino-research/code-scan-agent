@@ -32,12 +32,8 @@ def test_config():
     config = get_config()
     config.print_config()
     
-    if not config.validate():
-        print("❌ Configuration invalid!")
-        return False
-    
+    assert config.validate(), "Configuration invalid!"
     print("✅ Configuration valid!")
-    return True
 
 def test_configuration():
     """Test cấu hình agent"""
@@ -48,61 +44,62 @@ def test_configuration():
     
     # Hiển thị thông tin cấu hình
     print("🔧 Cấu hình Code Scan Agent:")
-    print(f"   • ADK Mode: {'Google AI Studio' if not config.google_genai_use_vertexai else 'Vertex AI'}")
-    print(f"   • API Key: {config.google_api_key[:10]}..." if config.google_api_key else "   • API Key: Không thiết lập")
-    print(f"   • Log Level: {config.log_level}")
+    print(f"   • Semgrep Timeout: {config.get('SEMGREP_TIMEOUT')}s")
+    print(f"   • Default Rules: {config.get('SEMGREP_DEFAULT_RULES')}")
+    print(f"   • Max File Size: {config.get('MAX_FILE_SIZE_MB')}MB")
+    print(f"   • Intelligent Scanning: {'Enabled' if config.get('INTELLIGENT_SCANNING_ENABLED') else 'Disabled'}")
     
-    return config.validate()
+    assert config.validate(), "Configuration invalid!"
 
 def test_list_tools():
     """Test lấy danh sách tools có sẵn"""
     try:
         client = get_semgrep_client()
         tools = client.list_tools()
-        return {
+        assert tools is not None, "Failed to get tools list"
+        
+        # Return tools without using return statement
+        tools_result = {
             "status": "success",
             "tools": tools
         }
+        
+        # Store result as a global variable for test_tools_list to use
+        global tools_list_result
+        tools_list_result = tools_result
+        
     except Exception as e:
         logger.error(f"Lỗi khi list tools: {e}")
-        return {
-            "status": "error",
-            "error_message": str(e)
-        }
+        assert False, f"Error listing tools: {e}"
 
 def test_tools_list():
     """Test list available tools"""
     print("🔧 Testing available tools...")
     
-    # Test sync wrapper
-    result = test_list_tools()
+    # Call test_list_tools to populate tools_list_result
+    test_list_tools()
     
-    if result["status"] == "success":
-        tools = result["tools"]
-        print(f"✅ Found {len(tools)} available tools")
-        for tool in tools:
-            print(f"   • {tool.get('name', 'unnamed')}: {tool.get('description', 'no description')}")
-        return True
-    else:
-        print(f"❌ Failed: {result['error_message']}")
-        return False
+    # Use the global variable
+    global tools_list_result
+    assert tools_list_result["status"] == "success", "Failed to get tools list"
+    
+    tools = tools_list_result["tools"]
+    print(f"✅ Found {len(tools)} available tools")
+    for tool in tools:
+        print(f"   • {tool.get('name', 'unnamed')}: {tool.get('description', 'no description')}")
 
 def test_supported_languages():
     """Test lấy danh sách ngôn ngữ"""
     print("\n🌍 Testing supported languages...")
     try:
         result = get_supported_languages()
-        if result["status"] == "success":
-            languages = result["supported_languages"]
-            print(f"✅ Found {len(languages)} supported languages")
-            print(f"   Sample languages: {languages[:10]}...")
-            return True
-        else:
-            print(f"❌ Failed: {result.get('error_message', 'Unknown error')}")
-            return False
+        assert result["status"] == "success", f"Failed: {result.get('error_message', 'Unknown error')}"
+        
+        languages = result["supported_languages"]
+        print(f"✅ Found {len(languages)} supported languages")
+        print(f"   Sample languages: {languages[:10]}...")
     except Exception as e:
-        print(f"❌ Exception: {e}")
-        return False
+        assert False, f"Exception: {e}"
 
 def test_quick_security_check():
     """Test quick security check"""
@@ -120,31 +117,26 @@ def get_user(user_id):
     
     try:
         result = quick_security_check(vulnerable_code, "python")
-        if result["status"] == "success":
-            print("✅ Quick security check completed")
-            print(f"   Language: {result['language']}")
-            
-            # Kiểm tra xem có tìm thấy lỗ hổng không
-            scan_result = result.get("result", {})
-            if "content" in scan_result:
-                findings = scan_result["content"]
-                if isinstance(findings, list) and len(findings) > 0:
-                    print(f"   🚨 Found {len(findings)} security issues!")
-                    for finding in findings[:3]:  # Show first 3
-                        if isinstance(finding, dict):
-                            rule_id = finding.get("check_id", "unknown")
-                            message = finding.get("extra", {}).get("message", "No message")
-                            print(f"     • {rule_id}: {message}")
-                else:
-                    print("   ✅ No security issues found")
-            
-            return True
-        else:
-            print(f"❌ Failed: {result.get('error_message', 'Unknown error')}")
-            return False
+        assert result["status"] == "success", f"Failed: {result.get('error_message', 'Unknown error')}"
+        
+        print("✅ Quick security check completed")
+        print(f"   Language: {result['language']}")
+        
+        # Kiểm tra xem có tìm thấy lỗ hổng không
+        scan_result = result.get("result", {})
+        if "content" in scan_result:
+            findings = scan_result["content"]
+            if isinstance(findings, list) and len(findings) > 0:
+                print(f"   🚨 Found {len(findings)} security issues!")
+                for finding in findings[:3]:  # Show first 3
+                    if isinstance(finding, dict):
+                        rule_id = finding.get("check_id", "unknown")
+                        message = finding.get("extra", {}).get("message", "No message")
+                        print(f"     • {rule_id}: {message}")
+            else:
+                print("   ✅ No security issues found")
     except Exception as e:
-        print(f"❌ Exception: {e}")
-        return False
+        assert False, f"Exception: {e}"
 
 def test_scan_examples():
     """Test scan examples directory"""
@@ -153,28 +145,24 @@ def test_scan_examples():
     examples_dir = Path("examples")
     if not examples_dir.exists():
         print("⚠️  Examples directory not found, skipping test")
-        return True
+        return
     
     try:
         result = scan_code_directory(str(examples_dir))
-        if result["status"] == "success":
-            if "total_findings" in result:
-                print(f"✅ Directory scan completed")
-                print(f"   Total findings: {result['total_findings']}")
-                if result["total_findings"] > 0:
-                    print(f"   Summary: {result.get('summary', 'No summary')}")
-                    severity = result.get("severity_breakdown", {})
-                    if severity:
-                        print(f"   Severity breakdown: {severity}")
-            else:
-                print("✅ Directory scan completed (basic result)")
-            return True
+        assert result["status"] == "success", f"Failed: {result.get('error_message', 'Unknown error')}"
+        
+        if "total_findings" in result:
+            print(f"✅ Directory scan completed")
+            print(f"   Total findings: {result['total_findings']}")
+            if result["total_findings"] > 0:
+                print(f"   Summary: {result.get('summary', 'No summary')}")
+                severity = result.get("severity_breakdown", {})
+                if severity:
+                    print(f"   Severity breakdown: {severity}")
         else:
-            print(f"❌ Failed: {result.get('error_message', 'Unknown error')}")
-            return False
+            print("✅ Directory scan completed (basic result)")
     except Exception as e:
-        print(f"❌ Exception: {e}")
-        return False
+        assert False, f"Exception: {e}"
 
 def main():
     """Hàm chính"""

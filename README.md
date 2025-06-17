@@ -41,6 +41,14 @@ Code Scan Agent is an intelligent security scanning solution that combines:
 - **Resource Management**: Automatic cleanup and memory management
 - **Health Monitoring**: Built-in health checks and preflight validation
 
+### 🧠 Intelligent Scanning (NEW!)
+- **ADK Workflow Agents**: Multi-agent system for intelligent code analysis
+- **Smart Rule Selection**: Automatically detects project type and selects optimal Semgrep rules
+- **Pattern-Based Optimization**: Analyzes code patterns to prioritize high-risk areas
+- **Context-Aware Scanning**: Tailors scan approach based on project complexity and risk factors
+- **Sequential Agent Workflow**: Rule Analysis → Pattern Analysis → Optimized Scan
+- **Automatic Fallback**: Falls back to traditional scanning if intelligent mode fails
+
 ## 🚀 Installation
 
 ### Prerequisites
@@ -120,6 +128,8 @@ adk web
 - "What security issues are in the uploaded code?"
 - "Explain this vulnerability and how to fix it"
 - "Create a security report for my project"
+- **NEW!** "Analyze my project with intelligent scanning"
+- **NEW!** "What's the optimal scanning strategy for this codebase?"
 
 ### Option 3: Terminal Interface
 ```bash
@@ -141,13 +151,14 @@ adk api_server --port 8080
 
 ### Available Functions
 
-- `scan_code_directory(directory_path, config=None)` - Scan toàn bộ thư mục
+- `scan_code_directory(directory_path, config=None, intelligent=True)` - Scan thư mục với intelligent mode
 - `scan_code_files(file_paths, config=None)` - Scan danh sách files cụ thể  
 - `quick_security_check(code_content, language)` - Check nhanh code snippet
 - `scan_with_custom_rule(code_content, rule, language)` - Scan với custom rule
 - `get_supported_languages()` - Lấy danh sách ngôn ngữ được hỗ trợ
 - `analyze_code_structure(code_content, language)` - Phân tích cấu trúc code
 - `get_semgrep_rule_schema()` - Lấy schema cho Semgrep rules
+- `intelligent_project_analysis(directory_path)` - **NEW!** Phân tích intelligent project
 
 ### Error Handling
 
@@ -454,16 +465,79 @@ chmod +x run_agent.py
    V: Vue, YAML
 ```
 
+## 🧠 Intelligent Scanning với ADK Workflow Agents
+
+Code Scan Agent giờ đây hỗ trợ **Intelligent Scanning** sử dụng ADK Workflow Agents để tự động tối ưu hóa quy trình scanning.
+
+### 🔄 Workflow Process
+
+Intelligent scanning hoạt động qua 3 bước tuần tự:
+
+1. **🔍 Rule Analysis Agent**
+   - Phân tích cấu trúc project (languages, frameworks, dependencies)
+   - Xác định Semgrep rules phù hợp nhất
+   - Giải thích lý do chọn rules
+
+2. **📊 Code Pattern Agent** 
+   - Phân tích complexity và file structure
+   - Xác định high-risk patterns (hardcoded secrets, SQL queries, etc.)
+   - Tính toán scan priorities dựa trên risk factors
+
+3. **⚡ Optimized Security Scan Agent**
+   - Thực hiện scan với rules đã được tối ưu
+   - Áp dụng approach phù hợp (comprehensive/targeted/quick)
+   - Enhance findings với analysis context
+
+### 🚀 Usage Examples
+
+```python
+# Intelligent scanning (mặc định)
+result = agent.scan_code_directory("my-project/")
+
+# Traditional scanning  
+result = agent.scan_code_directory("my-project/", intelligent=False)
+
+# Chỉ phân tích project (không scan)
+analysis = agent.intelligent_project_analysis("my-project/")
+```
+
+**Sample Intelligent Analysis Output:**
+```
+Languages detected: python, javascript
+Frameworks detected: django, react
+Recommended rules: p/security-audit, p/python, p/django, p/javascript, p/react
+Risk patterns found: 3 (hardcoded_secrets, sql_queries)
+Scan priority: high
+Optimal approach: comprehensive_scan
+```
+
+### 💡 Benefits
+
+- **🎯 Targeted Scanning**: Chỉ sử dụng rules phù hợp với project
+- **⚡ Better Performance**: Tránh scan với unnecessary rules  
+- **🔍 Higher Accuracy**: Context-aware vulnerability detection
+- **📈 Smart Prioritization**: Focus vào high-risk areas trước
+- **🔄 Automatic Fallback**: Fallback to traditional nếu intelligent fails
+
+### 🎮 Demo
+
+Chạy demo để xem intelligent scanning hoạt động:
+
+```bash
+python demo_intelligent_scanning.py
+```
+
 ## 🏗️ Project Structure
 
 ```
 code-scan-agent/
 ├── code_scan_agent/          # Main package
 │   ├── __init__.py
-│   ├── agent.py             # Core agent with 6 scanning tools
+│   ├── agent.py             # Core agent with 9 scanning tools
 │   ├── semgrep_client.py    # MCP client implementation
 │   ├── config.py            # Configuration management
 │   ├── errors.py            # Enhanced error handling
+│   ├── intelligent_scanner.py  # NEW! Intelligent scanning agents
 │   └── .env                 # Environment configuration
 ├── examples/                 # Test files with vulnerabilities
 │   └── vulnerable_code.py   # Sample vulnerable code
@@ -473,6 +547,7 @@ code-scan-agent/
 ├── pyproject.toml           # Dependencies and project config
 ├── quick_start.sh           # Automated setup script
 ├── run_agent.py            # Interactive script runner
+├── demo_intelligent_scanning.py  # NEW! Intelligent scanning demo
 └── README.md               # This file
 ```
 
