@@ -373,6 +373,8 @@ error_handler = ErrorHandler()
 def handle_errors(component: str, operation: str = None):
     """Decorator để tự động handle errors"""
     def decorator(func):
+        import functools
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             op_name = operation or func.__name__
             try:

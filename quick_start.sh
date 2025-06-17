@@ -62,4 +62,26 @@ else
     echo ""
     echo "❌ Setup failed. Please check the configuration and try again."
     exit 1
-fi 
+fi
+
+echo "🚀 Starting Code Scan Agent Web UI..."
+
+# Activate virtual environment if exists
+if [ -d "venv" ]; then
+    echo "📦 Activating virtual environment..."
+    source venv/bin/activate
+else
+    echo "⚠️  Virtual environment not found! Creating one..."
+    python3 -m venv venv
+    source venv/bin/activate
+    echo "📦 Installing dependencies..."
+    pip install -e .
+fi
+
+# Start ADK web interface
+echo "🌐 Starting ADK web interface..."
+echo "📝 Agent sẽ có thể scan thư mục sau khi khởi động thành công"
+echo ""
+adk web
+
+echo "👋 Web UI stopped. Goodbye!" 

@@ -18,6 +18,7 @@ Code Scan Agent is an intelligent security scanning solution that combines:
 - **Code Quality**: Code smells, bad practices, maintainability issues
 - **Custom Rules**: Create and use custom Semgrep rules
 - **Multi-language Support**: 40+ programming languages including Python, JavaScript, Java, C++, Go, etc.
+- **AST Analysis**: Advanced code structure analysis with abstract syntax trees
 
 ### 🤖 AI-Powered Analysis
 - **Intelligent Explanations**: AI explains vulnerabilities and provides remediation suggestions
@@ -27,9 +28,18 @@ Code Scan Agent is an intelligent security scanning solution that combines:
 
 ### 🏗️ Architecture
 - **MCP Protocol**: JSON-RPC communication with Semgrep MCP server
-- **Async Communication**: Efficient handling of multiple scanning operations
-- **Error Handling**: Robust error handling with circuit breaker patterns
+- **Async/Sync Communication**: Efficient handling of multiple scanning operations
+- **Circuit Breaker Pattern**: Fault tolerance and service protection
+- **Comprehensive Error Handling**: Structured error codes and recovery suggestions
 - **Cross-platform**: Supports Windows, macOS, Linux
+- **Thread-safe Operations**: Safe concurrent scanning operations
+
+### 🔧 Advanced Features
+- **Rule Schema Validation**: Get and validate Semgrep rule schemas
+- **Directory/File Scanning**: Flexible scanning of directories or specific files
+- **Quick Security Checks**: Fast vulnerability detection for code snippets
+- **Resource Management**: Automatic cleanup and memory management
+- **Health Monitoring**: Built-in health checks and preflight validation
 
 ## 🚀 Installation
 
@@ -37,6 +47,7 @@ Code Scan Agent is an intelligent security scanning solution that combines:
 - **Python 3.10+**
 - **uv package manager** (recommended)
 - **Google AI Studio API key**
+- **System Requirements**: Minimum 100MB RAM for optimal performance
 
 ### Quick Setup
 
@@ -126,6 +137,50 @@ adk api_server --port 8080
 - Integration with other tools
 - Programmatic access
 
+## 📚 API Documentation
+
+### Available Functions
+
+- `scan_code_directory(directory_path, config=None)` - Scan toàn bộ thư mục
+- `scan_code_files(file_paths, config=None)` - Scan danh sách files cụ thể  
+- `quick_security_check(code_content, language)` - Check nhanh code snippet
+- `scan_with_custom_rule(code_content, rule, language)` - Scan với custom rule
+- `get_supported_languages()` - Lấy danh sách ngôn ngữ được hỗ trợ
+- `analyze_code_structure(code_content, language)` - Phân tích cấu trúc code
+- `get_semgrep_rule_schema()` - Lấy schema cho Semgrep rules
+
+### Error Handling
+
+Code Scan Agent sử dụng hệ thống error handling toàn diện với:
+
+- **Structured Error Codes**: Mã lỗi chuẩn hóa (E1001-E9099)
+  - E1xxx: Input validation errors
+  - E2xxx: Semgrep client errors  
+  - E3xxx: MCP protocol errors
+  - E4xxx: Scan operation errors
+  - E5xxx: System/infrastructure errors
+  - E6xxx: Configuration errors
+- **Severity Levels**: CRITICAL, HIGH, MEDIUM, LOW, INFO
+- **Circuit Breaker**: Tự động ngăn chặn requests khi service lỗi
+- **Recovery Suggestions**: Gợi ý khắc phục cụ thể cho từng loại lỗi
+- **Context Tracking**: Thông tin đầy đủ về component và operation bị lỗi
+
+### Response Format
+
+All API functions return structured responses:
+
+```python
+{
+    "status": "success|error",
+    "result": {...},           # Scan results (on success)
+    "error_code": "E1001",     # Error code (on error)
+    "error_message": "...",    # Error description
+    "severity": "high",        # Error severity
+    "recovery_suggestion": "...", # How to fix
+    "timestamp": "2024-01-01T..."
+}
+```
+
 ## 🧪 Testing Features
 
 ### 1. Web UI Testing (Recommended for rich interface)
@@ -194,6 +249,25 @@ Expected Output:
 - AST analysis of uploaded files
 - Security architecture recommendations
 - Best practices for secure coding
+```
+
+**📋 Rule Schema Validation:**
+```
+Question: "Get the Semgrep rule schema for creating custom rules"
+Expected Output:
+- Complete JSON schema for Semgrep rules
+- Field descriptions and validation rules
+- Examples of valid rule structures
+```
+
+**⚡ Performance & Health Monitoring:**
+```
+Question: "Check system health and performance metrics"
+Expected Output:
+- Circuit breaker status for all services
+- Error frequency statistics
+- Resource usage monitoring
+- Service health checks
 ```
 
 **🚨 Vulnerability Explanation:**
