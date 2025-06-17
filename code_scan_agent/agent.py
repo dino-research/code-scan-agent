@@ -228,54 +228,65 @@ def format_scan_results(raw_result: Dict[str, Any], context: str = "") -> Dict[s
             }
         
         # Extract content từ MCP response
-        content = raw_result.get("content", [])
+        content_list = raw_result.get("content", [])
         
-        if isinstance(content, list):
-            findings_count = len(content)
-            
-            if findings_count == 0:
-                return {
-                    "status": "success",
-                    "summary": f"✅ Không tìm thấy vấn đề bảo mật nào{' trong ' + context if context else ''}",
-                    "total_findings": 0,
-                    "detailed_results": []
-                }
-            
-            # Phân loại theo mức độ nghiêm trọng
-            severity_counts = {}
-            high_severity_findings = []
-            
-            for finding in content:
-                if isinstance(finding, dict):
-                    severity = finding.get("extra", {}).get("severity", "info").lower()
-                    severity_counts[severity] = severity_counts.get(severity, 0) + 1
-                    
-                    # Collect high severity findings
-                    if severity in ["error", "warning"]:
-                        high_severity_findings.append({
-                            "rule_id": finding.get("check_id", "unknown"),
-                            "message": finding.get("extra", {}).get("message", "No message"),
-                            "severity": severity,
-                            "file": finding.get("path", "unknown"),
-                            "line": finding.get("start", {}).get("line", "unknown")
-                        })
-            
-            summary = f"🔍 Tìm thấy {findings_count} vấn đề{' trong ' + context if context else ''}"
-            
+        # Parse nested JSON structure từ MCP response
+        findings = []
+        if content_list and len(content_list) > 0:
+            first_content = content_list[0]
+            if isinstance(first_content, dict) and "text" in first_content:
+                try:
+                    # Parse nested JSON from text field
+                    import json
+                    parsed_data = json.loads(first_content["text"])
+                    findings = parsed_data.get("results", [])
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse nested JSON: {e}")
+                    findings = []
+            elif isinstance(first_content, dict):
+                # Direct findings format (legacy)
+                findings = content_list
+        
+        findings_count = len(findings)
+        
+        if findings_count == 0:
             return {
                 "status": "success",
-                "summary": summary,
-                "total_findings": findings_count,
-                "severity_breakdown": severity_counts,
-                "high_severity_findings": high_severity_findings[:5],  # Top 5 critical issues
-                "detailed_results": content[:10],  # First 10 detailed results
-                "note": f"Hiển thị top issues từ {findings_count} kết quả" if findings_count > 10 else None
+                "summary": f"✅ Không tìm thấy vấn đề bảo mật nào{' trong ' + context if context else ''}",
+                "total_findings": 0,
+                "detailed_results": [],
+                "severity_breakdown": {}
             }
         
-        # Fallback for other response formats
+        # Phân loại theo mức độ nghiêm trọng
+        severity_counts = {}
+        high_severity_findings = []
+        
+        for finding in findings:
+            if isinstance(finding, dict):
+                severity = finding.get("extra", {}).get("severity", "info").lower()
+                severity_counts[severity] = severity_counts.get(severity, 0) + 1
+                
+                # Collect high severity findings
+                if severity in ["error", "warning"]:
+                    high_severity_findings.append({
+                        "rule_id": finding.get("check_id", "unknown"),
+                        "message": finding.get("extra", {}).get("message", "No message"),
+                        "severity": severity,
+                        "file": finding.get("path", "unknown"),
+                        "line": finding.get("start", {}).get("line", "unknown")
+                    })
+        
+        summary = f"🔍 Tìm thấy {findings_count} vấn đề{' trong ' + context if context else ''}"
+        
         return {
             "status": "success",
-            "raw_result": raw_result
+            "summary": summary,
+            "total_findings": findings_count,
+            "severity_breakdown": severity_counts,
+            "high_severity_findings": high_severity_findings[:5],  # Top 5 critical issues
+            "detailed_results": findings[:10],  # First 10 detailed results
+            "note": f"Hiển thị top issues từ {findings_count} kết quả" if findings_count > 10 else None
         }
         
     except Exception as e:
@@ -737,13 +748,335 @@ def get_semgrep_rule_schema() -> Dict[str, Any]:
         }
 
 
+def analyze_project_architecture(directory_path: str) -> Dict[str, Any]:
+    """
+    Phân tích kiến trúc và cấu trúc bảo mật của toàn bộ project
+    
+    Args:
+        directory_path (str): Đường dẫn đến thư mục project
+        
+    Returns:
+        dict: Phân tích kiến trúc, recommendations bảo mật và best practices
+    """
+    try:
+        # Validate directory path
+        validated_path = validate_directory_path(directory_path)
+        
+        # Scan toàn bộ project để phát hiện vulnerabilities
+        scan_result = scan_code_directory(directory_path)
+        
+        # Check if scan_result is error response
+        if not isinstance(scan_result, dict) or scan_result.get("status") == "error":
+            return {
+                "status": "error", 
+                "error_message": f"Failed to scan project: {scan_result.get('error_message', 'Unknown error') if isinstance(scan_result, dict) else str(scan_result)}"
+            }
+        
+        # Phân tích cấu trúc project
+        project_analysis = {
+            "project_path": str(validated_path),
+            "total_files_analyzed": 0,
+            "languages_detected": [],
+            "frameworks_detected": [],
+            "architecture_patterns": [],
+            "security_recommendations": [],
+            "best_practices": []
+        }
+        
+        # Extract information from scan results
+        detailed_results = scan_result.get("detailed_results", [])
+        high_severity_findings = scan_result.get("high_severity_findings", [])
+        
+        # Detect languages from actual project file structure (not just findings)
+        languages = set()
+        frameworks = set()
+        
+        try:
+            # Scan actual file structure for comprehensive language detection
+            for file_path in validated_path.rglob("*"):
+                if file_path.is_file():
+                    file_ext = file_path.suffix.lower()
+                    relative_path = str(file_path.relative_to(validated_path))
+                    
+                    # Language detection from file extensions
+                    if file_ext == ".py":
+                        languages.add("Python")
+                    elif file_ext in [".js", ".jsx"]:
+                        languages.add("JavaScript") 
+                    elif file_ext in [".ts", ".tsx"]:
+                        languages.add("TypeScript")
+                    elif file_ext == ".java":
+                        languages.add("Java")
+                    elif file_ext in [".php"]:
+                        languages.add("PHP")
+                    elif file_ext in [".go"]:
+                        languages.add("Go")
+                    elif file_ext in [".rb"]:
+                        languages.add("Ruby")
+                    elif file_ext in [".cs"]:
+                        languages.add("C#")
+                    elif file_ext in [".html", ".htm"]:
+                        languages.add("HTML")
+                    elif file_ext in [".css"]:
+                        languages.add("CSS")
+                    elif file_ext in [".sql"]:
+                        languages.add("SQL")
+                    elif file_ext in [".c"]:
+                        languages.add("C")
+                    elif file_ext in [".cpp", ".cc", ".cxx"]:
+                        languages.add("C++")
+                    elif file_ext in [".rs"]:
+                        languages.add("Rust")
+                    elif file_ext in [".swift"]:
+                        languages.add("Swift")
+                    elif file_ext in [".kt"]:
+                        languages.add("Kotlin")
+                    elif file_ext in [".scala"]:
+                        languages.add("Scala")
+                    elif file_ext in [".sh", ".bash"]:
+                        languages.add("Shell")
+                    elif file_ext in [".yml", ".yaml"]:
+                        languages.add("YAML")
+                    elif file_ext in [".json"]:
+                        languages.add("JSON")
+                    elif file_ext in [".xml"]:
+                        languages.add("XML")
+                    elif file_ext in [".md"]:
+                        languages.add("Markdown")
+                    
+                    # Framework detection từ file paths và structure
+                    relative_path_lower = relative_path.lower()
+                    file_name = file_path.name.lower()
+                    
+                    # Django detection
+                    if any(indicator in relative_path_lower for indicator in [
+                        "manage.py", "settings.py", "urls.py", "models.py", "views.py", 
+                        "forms.py", "admin.py", "/migrations/", "wsgi.py", "asgi.py"
+                    ]):
+                        frameworks.add("Django")
+                    
+                    # Flask detection
+                    elif any(indicator in file_name for indicator in ["app.py", "flask"]) or "flask" in relative_path_lower:
+                        frameworks.add("Flask")
+                    
+                    # React/Node.js detection
+                    elif any(indicator in file_name for indicator in [
+                        "package.json", "package-lock.json", "yarn.lock", "webpack.config.js"
+                    ]) or "node_modules" in relative_path_lower:
+                        frameworks.add("React/Node.js")
+                    
+                    # Spring detection
+                    elif any(indicator in relative_path_lower for indicator in [
+                        "pom.xml", "build.gradle", "/src/main/java/", "application.properties"
+                    ]):
+                        frameworks.add("Spring")
+                    
+                    # Laravel detection
+                    elif any(indicator in file_name for indicator in [
+                        "composer.json", "artisan"
+                    ]) or "/vendor/" in relative_path_lower:
+                        frameworks.add("Laravel")
+                    
+                    # Docker detection
+                    elif file_name in ["dockerfile", "docker-compose.yml", "docker-compose.yaml"]:
+                        frameworks.add("Docker")
+                    
+                    # Web Templates detection
+                    elif "/templates/" in relative_path_lower and file_ext in [".html", ".htm"]:
+                        frameworks.add("Web Templates")
+                    
+                    # Database detection
+                    elif file_ext in [".sql"] or "migrations" in relative_path_lower:
+                        frameworks.add("Database")
+                        
+        except Exception as e:
+            logger.warning(f"Error scanning project structure: {e}")
+            # Fallback: detect from findings only
+            all_findings = detailed_results + high_severity_findings
+            for finding in all_findings:
+                if isinstance(finding, dict):
+                    file_path = finding.get("path") or finding.get("file") or ""
+                    if file_path:
+                        file_ext = Path(file_path).suffix.lower()
+                        if file_ext == ".py":
+                            languages.add("Python")
+                        elif file_ext in [".html", ".htm"]:
+                            languages.add("HTML")
+                        # Add other basic detections...
+        
+        project_analysis["languages_detected"] = list(languages)
+        project_analysis["frameworks_detected"] = list(frameworks)
+        
+        # Count total code files in project
+        try:
+            code_files_count = 0
+            code_extensions = {'.py', '.js', '.jsx', '.ts', '.tsx', '.java', '.php', '.go', '.rb', 
+                             '.cs', '.html', '.htm', '.css', '.sql', '.c', '.cpp', '.cc', '.cxx', 
+                             '.rs', '.swift', '.kt', '.scala'}
+            
+            for file_path in validated_path.rglob("*"):
+                if file_path.is_file() and file_path.suffix.lower() in code_extensions:
+                    code_files_count += 1
+                    
+            project_analysis["total_files_analyzed"] = code_files_count
+        except Exception as e:
+            logger.warning(f"Error counting files: {e}")
+            project_analysis["total_files_analyzed"] = scan_result.get("total_findings", 0)
+        
+        # Security Architecture Analysis dựa trên scan results  
+        security_issues = high_severity_findings + detailed_results
+        high_critical_issues = [
+            issue for issue in high_severity_findings 
+            if issue.get("severity", "").lower() in ["error", "warning"]
+        ]
+        
+        # Generate architecture recommendations based on findings
+        recommendations = []
+        
+        # Check for specific vulnerability patterns
+        rule_ids = []
+        for issue in security_issues:
+            if isinstance(issue, dict):
+                rule_id = issue.get("rule_id", issue.get("check_id", "")).lower()
+                rule_ids.append(rule_id)
+        
+        # Check for SQL injection patterns
+        if any("sql" in rule_id for rule_id in rule_ids):
+            recommendations.append({
+                "category": "Database Security",
+                "issue": "SQL Injection vulnerabilities detected",
+                "recommendation": "Implement parameterized queries, use ORM properly, validate input",
+                "priority": "HIGH"
+            })
+        
+        # Check for command injection patterns
+        if any("command" in rule_id for rule_id in rule_ids):
+            recommendations.append({
+                "category": "Command Injection",
+                "issue": "Command injection vulnerabilities found",
+                "recommendation": "Avoid shell execution, sanitize inputs, use subprocess safely",
+                "priority": "CRITICAL"
+            })
+        
+        # Check for hardcoded secrets
+        if any("hardcoded" in rule_id or "secret" in rule_id for rule_id in rule_ids):
+            recommendations.append({
+                "category": "Secret Management", 
+                "issue": "Hardcoded secrets detected",
+                "recommendation": "Use environment variables, secret management services (HashiCorp Vault, AWS Secrets Manager)",
+                "priority": "HIGH"
+            })
+        
+        # Check for XSS vulnerabilities
+        if any("xss" in rule_id for rule_id in rule_ids):
+            recommendations.append({
+                "category": "Input Validation",
+                "issue": "XSS vulnerabilities found",
+                "recommendation": "Implement proper input validation, output encoding, CSP headers",
+                "priority": "HIGH"
+            })
+        
+        # Check for CSRF vulnerabilities (specific to detected issues)
+        if any("csrf" in rule_id for rule_id in rule_ids):
+            recommendations.append({
+                "category": "CSRF Protection",
+                "issue": "CSRF protection vulnerabilities detected",
+                "recommendation": "Implement CSRF tokens in all forms, use Django's {% csrf_token %} tag",
+                "priority": "HIGH"
+            })
+        
+        # Check for missing integrity attributes
+        if any("integrity" in rule_id for rule_id in rule_ids):
+            recommendations.append({
+                "category": "Subresource Integrity",
+                "issue": "Missing integrity attributes for external resources",
+                "recommendation": "Add integrity attributes to external scripts and stylesheets to prevent CDN-based attacks",
+                "priority": "MEDIUM"
+            })
+        
+        # Check for Django-specific issues
+        if any("django" in rule_id for rule_id in rule_ids):
+            recommendations.append({
+                "category": "Django Security",
+                "issue": "Django-specific security issues detected",
+                "recommendation": "Follow Django security best practices, enable security middleware, use built-in protections",
+                "priority": "HIGH"
+            })
+        
+        # General best practices based on detected languages/frameworks
+        best_practices = []
+        
+        if "Python" in project_analysis["languages_detected"]:
+            best_practices.extend([
+                "Use virtual environments for dependency isolation",
+                "Keep dependencies updated with tools like pip-audit",
+                "Follow PEP 8 coding standards",
+                "Use type hints for better code quality"
+            ])
+        
+        if "Django" in project_analysis.get("frameworks_detected", []):
+            best_practices.extend([
+                "Enable Django security middleware",
+                "Use Django's built-in CSRF protection", 
+                "Implement proper authentication and authorization",
+                "Configure secure settings (DEBUG=False, secure headers)"
+            ])
+        
+        if "JavaScript" in project_analysis["languages_detected"]:
+            best_practices.extend([
+                "Use ESLint for code quality checking",
+                "Audit npm packages regularly with npm audit",
+                "Implement Content Security Policy (CSP)",
+                "Use HTTPS only for production"
+            ])
+        
+        # Add general recommendations
+        best_practices.extend([
+            "Implement comprehensive logging and monitoring",
+            "Regular security code reviews",
+            "Use static analysis tools (like this Semgrep scanner)",
+            "Implement automated testing for security",
+            "Follow OWASP security guidelines",
+            "Use secure coding practices"
+        ])
+        
+        # Compile final analysis
+        project_analysis.update({
+            "security_summary": {
+                "total_issues": scan_result.get("total_findings", 0),
+                "high_critical_issues": len(high_critical_issues),
+                "issue_breakdown": scan_result.get("severity_breakdown", {}),
+                "scan_status": scan_result.get("status", "unknown")
+            },
+            "security_recommendations": recommendations,
+            "best_practices": best_practices[:12],  # Top 12 recommendations
+            "detailed_findings": security_issues[:15] if security_issues else []  # Top 15 most critical findings
+        })
+        
+        return {
+            "status": "success",
+            "project_architecture_analysis": project_analysis,
+            "note": "Comprehensive project architecture and security analysis completed"
+        }
+        
+    except CodeScanException as e:
+        logger.error(f"Project architecture analysis error: {e}")
+        return create_error_response(e)
+    except Exception as e:
+        logger.error(f"Unexpected error in project architecture analysis: {e}")
+        return {
+            "status": "error",
+            "error_message": f"Unexpected error: {str(e)}"
+        }
+
+
 # Định nghĩa root agent với ADK
 root_agent = Agent(
     name="code_scan_agent",
     model="gemini-2.0-flash",
     description=(
         "Agent chuyên về scan code để tìm lỗ hổng bảo mật sử dụng Semgrep. "
-        "Có thể scan thư mục, file cụ thể, hoặc đoạn code với các rule tùy chỉnh."
+        "Có thể scan thư mục, file cụ thể, phân tích kiến trúc project, hoặc đoạn code với các rule tùy chỉnh."
     ),
     instruction=(
         "Bạn là một chuyên gia bảo mật code có thể giúp scan và phân tích code để tìm các lỗ hổng bảo mật. "
@@ -752,6 +1085,17 @@ root_agent = Agent(
         "- Code smells và bad practices\n"
         "- Compliance violations\n"
         "- Custom security rules\n\n"
+        "CHỨC NĂNG CHÍNH:\n"
+        "1. scan_code_directory(): Scan toàn bộ thư mục/project\n"
+        "2. scan_code_files(): Scan danh sách files cụ thể\n"
+        "3. analyze_project_architecture(): Phân tích kiến trúc và đưa ra recommendations bảo mật cho toàn bộ project\n"
+        "4. analyze_code_structure(): Phân tích AST của một file đơn lẻ\n"
+        "5. quick_security_check(): Check nhanh đoạn code snippet\n"
+        "6. scan_with_custom_rule(): Scan với custom rule\n\n"
+        "KHI NGƯỜI DÙNG YÊU CẦU PHÂN TÍCH PROJECT/ARCHITECTURE:\n"
+        "- Sử dụng analyze_project_architecture() cho toàn bộ project\n"
+        "- Sử dụng analyze_code_structure() cho file đơn lẻ\n"
+        "- Đưa ra recommendations về kiến trúc bảo mật, best practices\n\n"
         "Khi trả lời, hãy:\n"
         "1. Tóm tắt kết quả scan một cách rõ ràng\n"
         "2. Ưu tiên các vấn đề theo mức độ nghiêm trọng\n"
@@ -766,6 +1110,7 @@ root_agent = Agent(
         scan_with_custom_rule,
         get_supported_languages,
         analyze_code_structure,
+        analyze_project_architecture,
         get_semgrep_rule_schema
     ],
 ) 
