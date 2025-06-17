@@ -93,13 +93,22 @@ python run_agent.py
 - No browser required
 - Perfect for quick scans
 
-### Option 2: Web UI
+### Option 2: Web UI (Rich Interactive Experience)
 ```bash
 adk web
 ```
 - Open http://localhost:8000 in your browser
-- Rich web interface with visual reports
-- Drag & drop file uploads
+- **Chat-based interface**: Ask questions in natural language
+- **Visual reports**: Interactive vulnerability summaries
+- **File uploads**: Drag & drop files for analysis
+- **Real-time results**: Live vulnerability detection
+- **Educational mode**: Get explanations about security issues
+
+**Sample Web UI Interactions:**
+- "Scan my Python files for SQL injection vulnerabilities"
+- "What security issues are in the uploaded code?"
+- "Explain this vulnerability and how to fix it"
+- "Create a security report for my project"
 
 ### Option 3: Terminal Interface
 ```bash
@@ -119,8 +128,94 @@ adk api_server --port 8080
 
 ## 🧪 Testing Features
 
-### 1. Directory Scanning
-Test with the provided vulnerable code examples:
+### 1. Web UI Testing (Recommended for rich interface)
+
+Start the Web UI:
+```bash
+adk web
+# Open http://localhost:8000 in your browser
+```
+
+#### Test Questions & Expected Outputs:
+
+**🔍 Directory Scanning:**
+```
+Question: "Scan the examples directory for security vulnerabilities"
+Expected Output: Interactive report showing 10+ vulnerabilities with:
+- Severity breakdown (Critical, High, Medium, Low)
+- File locations with line numbers
+- Detailed vulnerability descriptions
+- Remediation suggestions
+```
+
+**📄 File Analysis:**
+```
+Question: "Analyze examples/vulnerable_code.py for security issues"
+Expected Output: Detailed analysis showing:
+- SQL injection in get_user_by_id() function (line 12)
+- Command injection in run_command() function (line 25)
+- Hardcoded credentials (lines 35-37)
+- Weak cryptography usage (MD5 hash)
+```
+
+**🔒 Code Snippet Security Check:**
+```
+Question: "Check this Python code for security issues:
+import os
+password = 'hardcoded123'
+os.system(f'mysql -u root -p{password}')"
+
+Expected Output:
+- Hardcoded password detected (severity: HIGH)
+- Command injection vulnerability (severity: CRITICAL)
+- Recommendations for secure alternatives
+```
+
+**🌍 Language Support Query:**
+```
+Question: "What programming languages does this tool support?"
+Expected Output: List of 40+ supported languages including:
+Python, JavaScript, Java, C++, Go, PHP, Ruby, Rust, TypeScript, etc.
+```
+
+**⚙️ Custom Security Rules:**
+```
+Question: "Create a custom rule to detect dangerous eval() usage in Python"
+Expected Output: 
+- Sample Semgrep rule in YAML format
+- Explanation of rule components
+- Test code example that would trigger the rule
+```
+
+**🏗️ Architecture Analysis:**
+```
+Question: "Analyze the code structure and suggest security improvements for my Django project"
+Expected Output:
+- AST analysis of uploaded files
+- Security architecture recommendations
+- Best practices for secure coding
+```
+
+**🚨 Vulnerability Explanation:**
+```
+Question: "Explain what SQL injection is and how to prevent it"
+Expected Output:
+- Clear explanation of SQL injection attacks
+- Code examples showing vulnerable vs secure patterns
+- Prevention techniques (parameterized queries, ORMs)
+```
+
+**📊 Project Security Assessment:**
+```
+Question: "Give me a comprehensive security assessment of my entire codebase"
+Expected Output:
+- Executive summary with risk score
+- Vulnerability categories breakdown
+- Priority recommendations
+- Compliance checklist (OWASP Top 10)
+```
+
+### 2. Interactive Script Testing
 
 ```bash
 # Using interactive script
@@ -134,7 +229,7 @@ adk run code_scan_agent
 
 **Expected Output**: Should detect 10+ vulnerabilities including SQL injection, command injection, hardcoded secrets.
 
-### 2. File-specific Scanning
+### 3. File-specific Scanning
 ```bash
 # Using interactive script
 python run_agent.py
@@ -144,7 +239,7 @@ python run_agent.py
 # Type: "Check examples/vulnerable_code.py for security issues"
 ```
 
-### 3. Quick Security Check (Code Snippet)
+### 4. Quick Security Check (Code Snippet)
 ```bash
 # Using interactive script
 python run_agent.py
@@ -158,7 +253,7 @@ os.system(f"mysql -u root -p{password}")
 
 **Expected Output**: Should detect hardcoded credentials and command injection.
 
-### 4. Language Support
+### 5. Language Support
 ```bash
 # Check supported languages
 python run_agent.py
@@ -167,7 +262,7 @@ python run_agent.py
 # Should show 40+ languages: Python, JavaScript, Java, C++, Go, etc.
 ```
 
-### 5. Custom Rules Testing
+### 6. Custom Rules Testing
 Create a custom Semgrep rule:
 
 ```yaml
@@ -186,7 +281,7 @@ user_input = "1+1"
 result = eval(user_input)  # Should be detected
 ```
 
-### 6. Advanced Features
+### 7. Advanced Features
 
 #### AST Analysis
 ```bash
@@ -200,6 +295,14 @@ adk run code_scan_agent
 # Interactive script
 python run_agent.py
 # Choose option 2 and enter: file1.py,file2.py,file3.py
+```
+
+### 8. Demo Script Testing
+```bash
+# Run the comprehensive demo
+python demo.py
+
+# Expected Output: Showcases all major features with sample results
 ```
 
 ## 🐛 Troubleshooting
