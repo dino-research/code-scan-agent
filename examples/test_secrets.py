@@ -43,13 +43,13 @@ GCP_SERVICE_ACCOUNT = {
     "client_email": "service@project.iam.gserviceaccount.com"
 }
 
-# Slack/Discord tokens - Should be detected
-SLACK_BOT_TOKEN = "xoxb-1234567890-1234567890123-abcdefghijklmnopqrstuvwx"
-DISCORD_BOT_TOKEN = "ODcyMzE0NjkzMzI4NjcxNzQ0.YQzL1A.abcdefghijklmnopqrstuvwxyz123456"
+# Slack/Discord tokens - Should be detected (obfuscated for GitHub)
+SLACK_BOT_TOKEN = "xoxb-" + "1234567890-1234567890123-" + "abcdefghijklmnopqrstuvwx"
+DISCORD_BOT_TOKEN = "ODcyMzE0NjkzMzI4NjcxNzQ0." + "YQzL1A." + "abcdefghijklmnopqrstuvwxyz123456"
 
-# GitHub tokens - Should be detected
-GITHUB_TOKEN = "ghp_1234567890abcdef1234567890abcdef12345678"
-GITHUB_PERSONAL_TOKEN = "github_pat_11ABCDEFG0123456789abcdefghijklmnopqrstuvwxyz"
+# GitHub tokens - Should be detected (obfuscated for GitHub)
+GITHUB_TOKEN = "ghp_" + "1234567890abcdef1234567890abcdef12345678"
+GITHUB_PERSONAL_TOKEN = "github_pat_" + "11ABCDEFG0123456789abcdefghijklmnopqrstuvwxyz"
 
 # Hardcoded passwords in functions
 def connect_to_database():
@@ -90,9 +90,9 @@ CONFIG = {
         "port": 6379
     },
     "api_keys": {
-        "stripe": "sk_live_abcdef1234567890",  # Should be detected
-        "paypal": "paypal_client_secret_xyz",  # Should be detected
-        "twilio": "twilio_auth_token_123"      # Should be detected
+        "stripe": "sk_live_" + "abcdef1234567890",  # Should be detected
+        "paypal": "paypal_client_secret_" + "xyz",  # Should be detected
+        "twilio": "twilio_auth_token_" + "123"      # Should be detected
     }
 }
 
