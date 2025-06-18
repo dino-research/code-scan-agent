@@ -34,12 +34,9 @@ logger = logging.getLogger(__name__)
 _client_lock = threading.Lock()
 _semgrep_client = None
 
-# Prefer LlmAgent from ADK if available
-try:
-    from google.adk.agents import LlmAgent as ADKAgent  # type: ignore
-except ImportError:  # pragma: no cover
-    # Sử dụng custom Agent từ intelligent.agents
-    from .intelligent.agents import Agent as ADKAgent
+# Pure Google ADK implementation
+from google.adk.agents import LlmAgent as ADKAgent
+logger.info("Using Google ADK LlmAgent")
 
 
 def get_semgrep_client() -> SemgrepSyncClient:

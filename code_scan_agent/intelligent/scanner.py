@@ -11,15 +11,12 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
-try:
-    from google.adk.agents import Agent
-except ImportError:
-    from .agents import Agent
+from google.adk.agents import LlmAgent
 
 logger = logging.getLogger(__name__)
 
 
-class RuleAnalysisAgent(Agent):
+class RuleAnalysisAgent(LlmAgent):
     """
     Agent phân tích project để xác định rules Semgrep cần thiết
     """
@@ -233,7 +230,7 @@ class RuleAnalysisAgent(Agent):
         return explanations
 
 
-class CodePatternAgent(Agent):
+class CodePatternAgent(LlmAgent):
     """
     Agent phân tích code patterns để xác định scan priorities
     """
@@ -363,8 +360,244 @@ class CodePatternAgent(Agent):
         else:
             return "quick"
 
+    def _analyze_complexity(self, project_path: Path, languages: List[str]) -> Dict[str, Any]:
+        """Phân tích complexity của project"""
+        import re
+        
+        complexity_metrics = {
+            "total_lines": 0,
+            "code_lines": 0,
+            "function_count": 0,
+            "class_count": 0,
+            "complexity_score": 0,
+            "avg_file_complexity": 0
+        }
+        
+        file_count = 0
+        total_file_complexity = 0
+        
+        # Define extensions for supported languages
+        lang_extensions = {
+            'python': ['.py'],
+            'javascript': ['.js', '.jsx'],
+            'typescript': ['.ts', '.tsx'],
+            'java': ['.java'],
+            'php': ['.php'],
+            'ruby': ['.rb'],
+            'go': ['.go'],
+            'c': ['.c', '.h'],
+            'cpp': ['.cpp', '.cc', '.cxx', '.hpp']
+        }
+        
+        # Get relevant extensions based on detected languages
+        relevant_extensions = set()
+        for lang in languages:
+            if lang.lower() in lang_extensions:
+                relevant_extensions.update(lang_extensions[lang.lower()])
+        
+        # If no specific language detected, use common extensions
+        if not relevant_extensions:
+            relevant_extensions = {'.py', '.js', '.java', '.php', '.rb', '.go', '.c', '.cpp'}
+        
+        # Analyze files
+        for file_path in project_path.rglob('*'):
+            if (file_path.is_file() and 
+                file_path.suffix.lower() in relevant_extensions and 
+                not any(part.startswith('.') for part in file_path.parts)):
+                
+                try:
+                    content = file_path.read_text(encoding='utf-8', errors='ignore')
+                    lines = content.split('\n')
+                    
+                    # Count lines
+                    total_lines = len(lines)
+                    code_lines = len([line for line in lines if line.strip() and not line.strip().startswith('#')])
+                    
+                    complexity_metrics["total_lines"] += total_lines
+                    complexity_metrics["code_lines"] += code_lines
+                    
+                    # Count functions and classes (basic pattern matching)
+                    if file_path.suffix.lower() == '.py':
+                        complexity_metrics["function_count"] += len(re.findall(r'^\s*def\s+\w+', content, re.MULTILINE))
+                        complexity_metrics["class_count"] += len(re.findall(r'^\s*class\s+\w+', content, re.MULTILINE))
+                    elif file_path.suffix.lower() in ['.js', '.jsx', '.ts', '.tsx']:
+                        complexity_metrics["function_count"] += len(re.findall(r'function\s+\w+|const\s+\w+\s*=\s*\(', content))
+                        complexity_metrics["class_count"] += len(re.findall(r'class\s+\w+', content))
+                    elif file_path.suffix.lower() == '.java':
+                        complexity_metrics["function_count"] += len(re.findall(r'(public|private|protected).*?\w+\s*\(', content))
+                        complexity_metrics["class_count"] += len(re.findall(r'class\s+\w+', content))
+                    
+                    # Calculate file complexity
+                    file_complexity = code_lines / 10 + complexity_metrics["function_count"] + complexity_metrics["class_count"] * 2
+                    total_file_complexity += file_complexity
+                    file_count += 1
+                    
+                except Exception:
+                    continue
+        
+        # Calculate overall complexity score
+        if file_count > 0:
+            complexity_metrics["avg_file_complexity"] = total_file_complexity / file_count
+            complexity_metrics["complexity_score"] = (
+                complexity_metrics["code_lines"] / 100 +
+                complexity_metrics["function_count"] / 5 +
+                complexity_metrics["class_count"] * 2 +
+                complexity_metrics["avg_file_complexity"]
+            )
+        
+        # Determine complexity level
+        if complexity_metrics["complexity_score"] > 50:
+            complexity_level = "high"
+        elif complexity_metrics["complexity_score"] > 20:
+            complexity_level = "medium"
+        else:
+            complexity_level = "low"
+        
+        complexity_metrics["complexity_level"] = complexity_level
+        return complexity_metrics
 
-class OptimizedSecurityScanAgent(Agent):
+    def _identify_risk_patterns(self, project_path: Path, languages: List[str]) -> List[Dict[str, Any]]:
+        """Xác định risk patterns trong project"""
+        import re
+        
+        risk_patterns = []
+        
+        # Define risk patterns for different categories
+        pattern_definitions = {
+            "sql_injection": {
+                "patterns": [
+                    r"SELECT.*?FROM.*?\+",
+                    r"INSERT.*?VALUES.*?\+",
+                    r"UPDATE.*?SET.*?\+",
+                    r"DELETE.*?FROM.*?\+",
+                    r"execute\(.*?\+",
+                    r"query\(.*?\+"
+                ],
+                "severity": "high",
+                "description": "Potential SQL injection patterns"
+            },
+            "command_injection": {
+                "patterns": [
+                    r"os\.system\(",
+                    r"subprocess\.call\(",
+                    r"subprocess\.run\(",
+                    r"eval\(",
+                    r"exec\("
+                ],
+                "severity": "high",
+                "description": "Command injection vulnerabilities"
+            },
+            "hardcoded_secrets": {
+                "patterns": [
+                    r"password\s*=\s*['\"][^'\"]*['\"]",
+                    r"api_key\s*=\s*['\"][^'\"]*['\"]",
+                    r"secret\s*=\s*['\"][^'\"]*['\"]",
+                    r"token\s*=\s*['\"][^'\"]*['\"]"
+                ],
+                "severity": "medium",
+                "description": "Hardcoded credentials"
+            },
+            "weak_crypto": {
+                "patterns": [
+                    r"md5\(",
+                    r"sha1\(",
+                    r"random\.random\(",
+                    r"Math\.random\("
+                ],
+                "severity": "medium",
+                "description": "Weak cryptographic practices"
+            },
+            "unsafe_file_ops": {
+                "patterns": [
+                    r"open\(.*?\+",
+                    r"file\(.*?\+",
+                    r"readFile\(.*?\+",
+                    r"writeFile\(.*?\+"
+                ],
+                "severity": "medium",
+                "description": "Unsafe file operations"
+            }
+        }
+        
+        # Scan files for patterns
+        for file_path in project_path.rglob('*'):
+            if (file_path.is_file() and 
+                file_path.suffix.lower() in ['.py', '.js', '.jsx', '.ts', '.tsx', '.java', '.php', '.rb'] and
+                not any(part.startswith('.') for part in file_path.parts)):
+                
+                try:
+                    content = file_path.read_text(encoding='utf-8', errors='ignore')
+                    
+                    for category, definition in pattern_definitions.items():
+                        for pattern in definition["patterns"]:
+                            matches = re.findall(pattern, content, re.IGNORECASE)
+                            if matches:
+                                risk_patterns.append({
+                                    "category": category,
+                                    "severity": definition["severity"],
+                                    "description": definition["description"],
+                                    "file_pattern": str(file_path.relative_to(project_path)),
+                                    "matches": len(matches),
+                                    "pattern": pattern
+                                })
+                                break  # Only record once per category per file
+                                
+                except Exception:
+                    continue
+        
+        return risk_patterns
+
+    def _get_optimization_suggestions(self, file_analysis: Dict, risk_patterns: List[Dict]) -> List[str]:
+        """Tạo optimization suggestions dựa trên analysis"""
+        suggestions = []
+        
+        # File-based suggestions
+        project_size = file_analysis.get("project_size", "medium")
+        total_files = file_analysis.get("total_files", 0)
+        
+        if project_size == "large":
+            suggestions.append("Use targeted scanning for large projects to improve performance")
+            suggestions.append("Consider splitting scan into multiple phases")
+        elif project_size == "small":
+            suggestions.append("Quick scan mode recommended for small projects")
+        
+        if total_files > 500:
+            suggestions.append("Enable parallel scanning for better performance")
+        
+        # Risk-based suggestions
+        high_risk_count = sum(1 for pattern in risk_patterns if pattern.get("severity") == "high")
+        medium_risk_count = sum(1 for pattern in risk_patterns if pattern.get("severity") == "medium")
+        
+        if high_risk_count > 0:
+            suggestions.append("Prioritize high-severity security rules due to detected risk patterns")
+            suggestions.append("Enable comprehensive scanning for thorough security analysis")
+        
+        if medium_risk_count > 5:
+            suggestions.append("Use security-focused rule sets due to multiple risk patterns")
+        
+        # Category-specific suggestions
+        categories = {pattern.get("category") for pattern in risk_patterns}
+        
+        if "sql_injection" in categories:
+            suggestions.append("Enable database security rules")
+        
+        if "command_injection" in categories:
+            suggestions.append("Focus on command injection detection rules")
+        
+        if "hardcoded_secrets" in categories:
+            suggestions.append("Enable secret detection scanning")
+        
+        if "weak_crypto" in categories:
+            suggestions.append("Use cryptography-focused security rules")
+        
+        # General optimization suggestions
+        if not suggestions:
+            suggestions.append("Standard security scanning recommended")
+        
+        return suggestions[:6]  # Limit to top 6 suggestions
+
+
+class OptimizedSecurityScanAgent(LlmAgent):
     """
     Agent thực hiện security scanning với optimization
     """
@@ -435,11 +668,23 @@ class OptimizedSecurityScanAgent(Agent):
     
     def _build_config_string(self, rules: List[str]) -> str:
         """Build config string from rules list"""
-        if not rules or "auto" in rules:
+        if not rules:
             return "auto"
         
-        # Convert rules list to comma-separated string
-        return ",".join(rules)
+        # If only auto in rules, use auto
+        if len(rules) == 1 and rules[0] == "auto":
+            return "auto"
+        
+        # If we have specific rules beyond auto, use them
+        # Remove auto and use specific rules for better coverage
+        specific_rules = [rule for rule in rules if rule != "auto"]
+        
+        if specific_rules:
+            # Use specific rules for targeted scanning
+            return ",".join(specific_rules)
+        else:
+            # Fallback to auto if no specific rules
+            return "auto"
     
     def _comprehensive_scan(self, client, directory_path: str, config: Dict) -> Dict[str, Any]:
         """Perform comprehensive scan with all rules"""
@@ -458,36 +703,137 @@ class OptimizedSecurityScanAgent(Agent):
         if not isinstance(results, dict):
             return {"status": "error", "error": "Invalid scan results"}
         
-        # Extract findings from the raw results
-        findings = []
-        content_list = results.get("content", [])
-        
-        if content_list and len(content_list) > 0:
-            first_content = content_list[0]
-            if isinstance(first_content, dict) and "text" in first_content:
-                try:
-                    import json
-                    text_content = first_content.get("text", "")
-                    if text_content.strip():
-                        parsed_data = json.loads(text_content)
-                        findings = parsed_data.get("results", [])
-                except json.JSONDecodeError:
-                    findings = []
-        
-        # Enhance findings with context
-        enhanced_findings = self._enhance_findings_with_context(findings, analysis_context)
-        
-        # Create final result
-        return {
-            "status": "success",
-            "total_findings": len(enhanced_findings),
-            "findings": enhanced_findings[:10],  # Top 10 findings
-            "summary": f"Found {len(enhanced_findings)} issues with intelligent scanning",
-            "intelligence_metadata": {
-                "rules_used": analysis_context.get("rule_analysis", {}).get("analysis", {}).get("recommended_rules", []),
-                "scan_approach": analysis_context.get("pattern_analysis", {}).get("pattern_analysis", {}).get("scan_priorities", {}).get("scan_approach", "standard")
+        # Use the same format_scan_results as traditional mode
+        try:
+            from ..agent import format_scan_results
+            formatted_results = format_scan_results(results, context="intelligent scan")
+            
+            # Extract findings from formatted results
+            findings = []
+            
+            # Get findings from detailed_results (same as traditional mode)
+            detailed_results = formatted_results.get("detailed_results", [])
+            high_severity_findings = formatted_results.get("high_severity_findings", [])
+            
+            # Combine all findings for enhancement
+            all_findings = detailed_results + high_severity_findings
+            
+            # Remove duplicates based on check_id and path
+            seen_findings = set()
+            unique_findings = []
+            
+            for finding in all_findings:
+                if isinstance(finding, dict):
+                    # Create unique key for deduplication
+                    unique_key = (
+                        finding.get("check_id", finding.get("rule_id", "")),
+                        finding.get("path", finding.get("file_path", "")),
+                        finding.get("start", {}).get("line", finding.get("line", ""))
+                    )
+                    
+                    if unique_key not in seen_findings:
+                        seen_findings.add(unique_key)
+                        unique_findings.append(finding)
+            
+            # Enhance findings with context
+            enhanced_findings = self._enhance_findings_with_context(unique_findings, analysis_context)
+            
+            # Create final result with same structure as traditional mode
+            return {
+                "status": "success",
+                "total_findings": len(enhanced_findings),
+                "findings": enhanced_findings,  # Return ALL enhanced findings, not just top 10
+                "detailed_results": enhanced_findings,  # For compatibility
+                "high_severity_findings": [f for f in enhanced_findings if f.get("enhanced_priority") == "high"][:5],
+                "severity_breakdown": formatted_results.get("severity_breakdown", {}),
+                "summary": f"Found {len(enhanced_findings)} issues with intelligent scanning",
+                "intelligence_metadata": {
+                    "rules_used": analysis_context.get("rule_analysis", {}).get("analysis", {}).get("recommended_rules", []),
+                    "scan_approach": analysis_context.get("pattern_analysis", {}).get("pattern_analysis", {}).get("scan_priorities", {}).get("scan_approach", "standard"),
+                    "enhancement_applied": True,
+                    "original_findings_count": len(unique_findings),
+                    "deduplication_applied": len(all_findings) != len(unique_findings)
+                }
             }
-        }
+            
+        except Exception as e:
+            logger.error(f"Error in post-processing results: {e}")
+            # Fallback to basic processing
+            return {
+                "status": "error", 
+                "error": f"Result processing failed: {str(e)}",
+                "raw_results": results
+            }
+    
+    def _enhance_findings_with_context(self, findings: List[Dict], analysis_context: Dict) -> List[Dict]:
+        """Enhance findings với analysis context"""
+        enhanced_findings = []
+        
+        # Get context information
+        rule_analysis = analysis_context.get("rule_analysis", {})
+        pattern_analysis = analysis_context.get("pattern_analysis", {})
+        
+        security_contexts = rule_analysis.get("analysis", {}).get("security_contexts", [])
+        risk_patterns = pattern_analysis.get("pattern_analysis", {}).get("risk_patterns", [])
+        
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+                
+            enhanced_finding = finding.copy()
+            
+            # Add context tags
+            context_tags = []
+            
+            # Check if finding relates to detected security contexts
+            check_id = finding.get("check_id", "").lower()
+            message = finding.get("extra", {}).get("message", "").lower()
+            
+            if "sql" in check_id or "sql" in message:
+                if "database" in security_contexts:
+                    context_tags.append("matches_security_context:database")
+            
+            if "command" in check_id or "command" in message:
+                if "auth" in security_contexts:
+                    context_tags.append("matches_security_context:auth")
+            
+            if "xss" in check_id or "xss" in message:
+                if "web_app" in security_contexts:
+                    context_tags.append("matches_security_context:web_app")
+            
+            # Check if finding matches identified risk patterns
+            file_path = finding.get("path", "")
+            for risk_pattern in risk_patterns:
+                if risk_pattern.get("file_pattern", "") in file_path:
+                    context_tags.append(f"matches_risk_pattern:{risk_pattern.get('category', 'unknown')}")
+            
+            # Add enhanced metadata
+            enhanced_finding["context_tags"] = context_tags
+            enhanced_finding["analysis_confidence"] = "high" if context_tags else "medium"
+            
+            # Add priority based on context
+            severity = finding.get("extra", {}).get("severity", "").upper()
+            if context_tags and severity in ["ERROR", "WARNING"]:
+                enhanced_finding["enhanced_priority"] = "high"
+            elif context_tags:
+                enhanced_finding["enhanced_priority"] = "medium"
+            else:
+                enhanced_finding["enhanced_priority"] = "normal"
+            
+            enhanced_findings.append(enhanced_finding)
+        
+        # Sort by enhanced priority and severity
+        def sort_key(finding):
+            priority_map = {"high": 3, "medium": 2, "normal": 1}
+            severity_map = {"ERROR": 3, "WARNING": 2, "INFO": 1}
+            
+            priority = priority_map.get(finding.get("enhanced_priority", "normal"), 1)
+            severity = severity_map.get(finding.get("extra", {}).get("severity", "INFO").upper(), 1)
+            
+            return (priority, severity)
+        
+        enhanced_findings.sort(key=sort_key, reverse=True)
+        return enhanced_findings
     
     def _fallback_scan(self, directory_path: str) -> Dict[str, Any]:
         """Fallback to traditional scan if optimized scan fails"""
@@ -717,17 +1063,20 @@ class IntelligentCodeScanner:
     
     def _format_intelligent_results(self, scan_results: Dict, directory_path: str) -> Dict[str, Any]:
         """Format final results from intelligent scan"""
-        # If scan was successful, use its results
+        # If scan was successful, preserve all its data and add our enhancements
         if scan_results.get("status") == "success":
-            return {
-                "status": "success",
+            # Start with the complete scan results
+            formatted_results = scan_results.copy()
+            
+            # Add/override specific intelligent scan metadata
+            formatted_results.update({
                 "scan_type": "intelligent",
                 "intelligent_features": True,
                 "directory": directory_path,
-                "findings": scan_results.get("findings", []),
-                "total_findings": scan_results.get("total_findings", 0),
-                "scan_summary": scan_results.get("summary", "Scan completed")
-            }
+                "scan_summary": scan_results.get("summary", "Intelligent scan completed")
+            })
+            
+            return formatted_results
         
         # Otherwise, return basic structure
         return {
