@@ -1,0 +1,228 @@
+rules:
+  # Custom rule để phát hiện hardcoded passwords cụ thể
+  - id: hardcoded-password-patterns
+    patterns:
+      - pattern-either:
+          # Common password variable names
+          - pattern: $VAR = "..."
+            where: 
+              - metavariable-regex:
+                  metavariable: $VAR
+                  regex: '.*(password|passwd|pwd|secret|key|token|api_key|auth).*'
+          # Connection strings with embedded passwords
+          - pattern: "postgresql://$USER:$PASS@..."
+          - pattern: "mysql://$USER:$PASS@..."
+          - pattern: "mongodb://$USER:$PASS@..."
+    message: |
+      Hardcoded credential detected. Store credentials in environment variables or secure configuration.
+    severity: ERROR
+    languages: [python, javascript, typescript, java, kotlin, dart]
+    metadata:
+      category: security
+      subcategory: hardcoded-credentials
+      confidence: HIGH
+
+  # Custom rule để phát hiện eval và exec usage
+  - id: dangerous-code-execution
+    patterns:
+      - pattern-either:
+          - pattern: eval($CODE)
+          - pattern: exec($CODE) 
+          - pattern: eval($CODE, ...)
+          - pattern: exec($CODE, ...)
+          - pattern: subprocess.call($CMD, shell=True)
+          - pattern: subprocess.run($CMD, shell=True)
+          - pattern: os.system($CMD)
+          - pattern: os.popen($CMD)
+    message: |
+      Dangerous code execution detected. This can lead to code injection vulnerabilities.
+      Avoid using eval(), exec(), or shell=True with user input.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      subcategory: code-injection
+      confidence: HIGH
+
+  # Custom rule để phát hiện SQL injection patterns
+  - id: sql-injection-patterns
+    patterns:
+      - pattern-either:
+          # String formatting trong SQL queries
+          - pattern: |
+              $QUERY = f"... {$VAR} ..."
+              $DB.execute($QUERY)
+          - pattern: |
+              $QUERY = "..." + $VAR + "..."
+              $DB.execute($QUERY)
+          - pattern: |
+              $QUERY = "... {} ...".format($VAR)
+              $DB.execute($QUERY)
+          # Direct string interpolation
+          - pattern: cursor.execute(f"... {$VAR} ...")
+          - pattern: connection.execute("..." + $VAR + "...")
+    message: |
+      Potential SQL injection vulnerability. Use parameterized queries instead.
+      Example: cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      subcategory: sql-injection
+      confidence: HIGH
+
+  # Custom rule để phát hiện weak cryptography
+  - id: weak-cryptography-usage
+    patterns:
+      - pattern-either:
+          # MD5 usage
+          - pattern: hashlib.md5($DATA)
+          - pattern: MessageDigest.getInstance("MD5")
+          # SHA1 usage
+          - pattern: hashlib.sha1($DATA)
+          - pattern: MessageDigest.getInstance("SHA1")
+          # DES encryption
+          - pattern: Cipher.getInstance("DES")
+          # Weak random
+          - pattern: Random().nextInt()
+          - pattern: Math.random()
+    message: |
+      Weak cryptographic algorithm detected. Use stronger alternatives:
+      - Replace MD5/SHA1 with SHA-256 or SHA-3
+      - Replace DES with AES
+      - Use SecureRandom instead of Random for security-sensitive operations
+    severity: WARNING
+    languages: [python, java, kotlin]
+    metadata:
+      category: security
+      subcategory: weak-crypto
+      confidence: HIGH
+
+  # Custom rule để phát hiện insecure randomness
+  - id: insecure-randomness
+    patterns:
+      - pattern-either:
+          - pattern: random.randint($MIN, $MAX)
+          - pattern: random.choice($LIST)
+          - pattern: Random().nextInt($MAX)
+          - pattern: Math.random()
+          - pattern: Random().nextDouble()
+    message: |
+      Insecure random number generation for security-sensitive operations.
+      Use secrets.randbelow() in Python or SecureRandom in Java/Kotlin.
+    severity: WARNING
+    languages: [python, java, kotlin, dart]
+    metadata:
+      category: security
+      subcategory: insecure-random
+      confidence: MEDIUM
+
+  # Custom rule để phát hiện information disclosure
+  - id: information-disclosure-debug
+    patterns:
+      - pattern-either:
+          # Debug information exposure
+          - pattern: print($DEBUG_INFO)
+            where:
+              - metavariable-regex:
+                  metavariable: $DEBUG_INFO
+                  regex: '.*(password|secret|token|key|env|debug).*'
+          - pattern: console.log($DEBUG_INFO)
+            where:
+              - metavariable-regex:
+                  metavariable: $DEBUG_INFO
+                  regex: '.*(password|secret|token|key|env|debug).*'
+          - pattern: Log.d($TAG, $MESSAGE)
+            where:
+              - metavariable-regex:
+                  metavariable: $MESSAGE
+                  regex: '.*(password|secret|token|key).*'
+    message: |
+      Potential information disclosure through debug statements.
+      Avoid logging sensitive information like passwords, tokens, or keys.
+    severity: WARNING
+    languages: [python, javascript, typescript, java, kotlin]
+    metadata:
+      category: security
+      subcategory: info-disclosure
+      confidence: MEDIUM
+
+  # Custom rule để phát hiện path traversal
+  - id: path-traversal-vulnerability
+    patterns:
+      - pattern-either:
+          - pattern: open($PATH, ...)
+            where:
+              - metavariable-regex:
+                  metavariable: $PATH
+                  regex: '.*\.\./.*'
+          - pattern: File($PATH)
+            where:
+              - metavariable-regex:
+                  metavariable: $PATH
+                  regex: '.*\.\./.*'
+          - pattern: Path($PATH)
+            where:
+              - metavariable-regex:
+                  metavariable: $PATH
+                  regex: '.*user_input.*'
+    message: |
+      Potential path traversal vulnerability. Validate and sanitize file paths.
+      Use Path.resolve() and check that the result is within allowed directories.
+    severity: ERROR
+    languages: [python, java, kotlin]
+    metadata:
+      category: security
+      subcategory: path-traversal
+      confidence: HIGH
+
+  # Custom rule cho Android specific issues
+  - id: android-security-issues
+    patterns:
+      - pattern-either:
+          # Insecure logging in Android
+          - pattern: Log.$LEVEL($TAG, $MESSAGE)
+            where:
+              - metavariable-regex:
+                  metavariable: $MESSAGE
+                  regex: '.*(password|secret|token|key|auth).*'
+          # Debuggable true in production
+          - pattern: android { debuggable true }
+          # AllowBackup true
+          - pattern: android { allowBackup true }
+    message: |
+      Android security issue detected:
+      - Don't log sensitive information
+      - Set debuggable false in production
+      - Consider setting allowBackup false for sensitive apps
+    severity: WARNING
+    languages: [kotlin, java]
+    metadata:
+      category: security
+      subcategory: android-security
+      confidence: HIGH
+
+  # Custom rule cho Flutter/Dart specific issues  
+  - id: dart-security-issues
+    patterns:
+      - pattern-either:
+          # Insecure HTTP in Flutter
+          - pattern: |
+              const String $URL = "http://..."
+          # Hardcoded API keys in Dart
+          - pattern: |
+              static const String $VAR = "...";
+            where:
+              - metavariable-regex:
+                  metavariable: $VAR
+                  regex: '.*(apiKey|api_key|secret|token).*'
+    message: |
+      Flutter/Dart security issue:
+      - Use HTTPS instead of HTTP for network calls
+      - Don't hardcode API keys in source code
+    severity: WARNING
+    languages: [dart]
+    metadata:
+      category: security
+      subcategory: flutter-security
+      confidence: HIGH 

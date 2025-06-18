@@ -182,24 +182,21 @@ class FileScanOptimizationAgent(OptimizationAgent):
         # Enhanced parameters
         enhanced_params = {}
         
-        # Use custom config if needed
-        if hints.get("use_targeted_rules", False):
-            languages = file_analysis.get("languages", [])
-            if languages:
-                # Build optimized config string
-                rules = ["p/security-audit"]  # Always include security audit
-                
-                # Add language-specific rules
-                primary_lang = languages[0] if languages else None
-                if primary_lang:
-                    rules.append(f"p/{primary_lang}")
-                
-                # Add framework rules
-                frameworks = self._get_targeted_frameworks(file_analysis)
-                for framework in frameworks:
-                    rules.append(f"p/{framework}")
-                
-                enhanced_params["config"] = ",".join(rules)
+        # PRESERVE original config parameter if provided
+        # Check if config was explicitly set in kwargs
+        original_kwargs = analysis.get("kwargs", {})
+        if "config" in original_kwargs and original_kwargs["config"]:
+            # Keep original config for maximum parity
+            enhanced_params["config"] = original_kwargs["config"]
+            logger.info(f"Preserving original config: {original_kwargs['config']}")
+        else:
+            # Only use custom config if no explicit config provided
+            if hints.get("use_targeted_rules", False):
+                languages = file_analysis.get("languages", [])
+                if languages:
+                    # Use 'auto' for maximum coverage like direct MCP
+                    enhanced_params["config"] = "auto"
+                    logger.info("Using 'auto' config for maximum coverage")
         
         return enhanced_params
     

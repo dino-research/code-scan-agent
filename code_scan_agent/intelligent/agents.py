@@ -91,7 +91,11 @@ def optimize_scan_parameters(analysis_data: str, priority_level: str = "medium")
     logger.info(f"Optimizing scan parameters for priority: {priority_level}")
     
     try:
-        analysis = json.loads(analysis_data) if isinstance(analysis_data, str) else analysis_data
+        if isinstance(analysis_data, str):
+            from ..serialization_utils import safe_json_loads
+            analysis = safe_json_loads(analysis_data, default={}, context="analysis_data_parsing")
+        else:
+            analysis = analysis_data
         
         # Rule selection based on detected languages and priority
         languages = analysis.get("languages_detected", [])
@@ -337,7 +341,8 @@ def test_adk_agents() -> Dict[str, Any]:
         results["tests"]["analysis_tool"] = {"status": "error", "error": str(e)}
     
     try:
-        test_analysis = json.dumps({"languages_detected": ["python"], "total_files": 5})
+        from ..serialization_utils import safe_json_dumps
+        test_analysis = safe_json_dumps({"languages_detected": ["python"], "total_files": 5}, context="test_analysis")
         optimization_result = optimize_scan_parameters(test_analysis, "medium")
         results["tests"]["optimization_tool"] = {
             "status": "success" if optimization_result.get("status") == "success" else "failed",

@@ -16,14 +16,15 @@ logger = logging.getLogger(__name__)
 
 # Default configuration
 DEFAULT_CONFIG = {
-    # Semgrep client configuration
-    "SEMGREP_TIMEOUT": 30,
+    # Semgrep client configuration - tăng timeout
+    "SEMGREP_TIMEOUT": 60,  # Tăng từ 30 lên 60 seconds
     "SEMGREP_MAX_RETRIES": 3,
     "SEMGREP_DEFAULT_RULES": "auto",
+    "SEMGREP_INITIALIZE_TIMEOUT": 45,  # Timeout riêng cho initialize
     
     # Scanning limits
     "MAX_FILE_SIZE_MB": 10,
-    "MAX_SCAN_TIMEOUT": 300,
+    "MAX_SCAN_TIMEOUT": 600,  # Tăng từ 300 lên 600 seconds cho scan lớn
     "MAX_CONCURRENT_SCANS": 4,
     
     # Intelligent scanning
@@ -35,6 +36,70 @@ DEFAULT_CONFIG = {
     "ENABLE_CIRCUIT_BREAKER": True,
     "DETAILED_ERROR_REPORTING": True,
     "ENABLE_PERFORMANCE_MONITORING": True,
+    "ENABLE_SECRETS_DETECTION": True,
+    "ENABLE_ANDROID_SUPPORT": True,
+    
+    # Timeout configurations
+    "MCP_CONNECTION_TIMEOUT": 30,  # Timeout cho connection
+    "MCP_READ_TIMEOUT": 60,        # Timeout cho đọc response
+    "MCP_RETRY_DELAY": 2,          # Delay giữa các retry
+    
+    # Secrets detection configuration
+    "SECRETS_ENTROPY_THRESHOLD": 4.5,
+    "SECRETS_MIN_LENGTH": 8,
+    "SECRETS_EXCLUDE_PATTERNS": ["test", "example", "sample", "demo"],
+    
+    # Android/Mobile configuration  
+    "ANDROID_MIN_SDK_VERSION": 21,
+    "ANDROID_TARGET_SDK_VERSION": 34,
+    "FLUTTER_MIN_VERSION": "3.0.0",
+    
+    # Rule configurations
+    "SEMGREP_RULES_CONFIG": {
+        "secrets": [
+            "r/secrets",
+            "r/security.secrets", 
+            "p/secrets",
+            "p/security",
+            "r/generic.secrets",
+            "r/python.lang.security.audit.hardcoded-password",
+            "r/python.lang.security.audit.hardcoded-secret",
+            "p/jwt",
+            "p/docker-secrets",
+            "p/kubernetes-secrets"
+        ],
+        "comprehensive": [
+            "auto",
+            "r/security",
+            "r/secrets", 
+            "p/security",
+            "p/secrets",
+            "p/owasp-top-ten",
+            "p/command-injection", 
+            "p/sql-injection",
+            "p/xss",
+            "r/python.lang.security",
+            "r/generic.secrets.security",
+            "r/python.cryptography",
+            "r/python.lang.correctness"
+        ],
+        "android": [
+            "r/java.android",
+            "r/kotlin.android", 
+            "r/xml.android",
+            "r/java.lang.security",
+            "r/kotlin.lang.security"
+        ],
+        "flutter": [
+            "r/dart.flutter",
+            "r/yaml.flutter",
+            "r/dart.lang.security"
+        ],
+        "mobile_general": [
+            "r/mobile",
+            "r/security.mobile"
+        ]
+    },
     
     # Paths
     "TEMP_DIR": "/tmp/code_scan_agent",

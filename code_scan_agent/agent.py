@@ -214,8 +214,8 @@ def validate_file_paths(file_paths: List[str]) -> List[Path]:
     return validated_paths
 
 
-def format_scan_results(raw_result: Dict[str, Any], context: str = "") -> Dict[str, Any]:
-    """Format scan results cho human-readable output"""
+def format_scan_results(raw_result: Dict[str, Any], context: str = "", enhanced: bool = True) -> Dict[str, Any]:
+    """Format scan results cho human-readable output với robust serialization và enhanced formatting"""
     try:
         if not isinstance(raw_result, dict):
             return {
@@ -230,41 +230,34 @@ def format_scan_results(raw_result: Dict[str, Any], context: str = "") -> Dict[s
                 "error_message": raw_result["error"]
             }
         
-        # Extract content từ MCP response
-        content_list = raw_result.get("content", [])
+        # Use advanced extraction utility
+        from .serialization_utils import extract_scan_results
+        extraction_result = extract_scan_results(raw_result, context=f"format_results_{context}")
         
-        # Parse nested JSON structure từ MCP response
-        findings = []
-        if content_list and len(content_list) > 0:
-            first_content = content_list[0]
-            if isinstance(first_content, dict) and "text" in first_content:
-                try:
-                    # Parse nested JSON from text field
-                    import json
-                    text_content = first_content.get("text", "")
-                    if text_content.strip():
-                        parsed_data = json.loads(text_content)
-                        findings = parsed_data.get("results", [])
-                    else:
-                        logger.warning("Empty text content in scan result")
-                        findings = []
-                except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse nested JSON: {e}")
-                    findings = []
-            elif isinstance(first_content, dict):
-                # Direct findings format (legacy)
-                findings = content_list
+        if extraction_result["status"] != "success":
+            return {
+                "status": "error",
+                "error_message": f"Failed to extract findings: {extraction_result.get('errors', 'unknown')}"
+            }
         
+        findings = extraction_result["findings"]
         findings_count = len(findings)
         
         if findings_count == 0:
-            return {
+            base_result = {
                 "status": "success",
                 "summary": f"✅ Không tìm thấy vấn đề bảo mật nào{' trong ' + context if context else ''}",
                 "total_findings": 0,
                 "detailed_results": [],
                 "severity_breakdown": {}
             }
+            
+            # Apply enhanced formatting for no findings case
+            if enhanced:
+                from .output_formatter import format_enhanced_scan_results
+                return format_enhanced_scan_results(base_result, scan_target=context)
+            
+            return base_result
         
         # Phân loại theo mức độ nghiêm trọng
         severity_counts = {}
@@ -293,7 +286,7 @@ def format_scan_results(raw_result: Dict[str, Any], context: str = "") -> Dict[s
         
         summary = f"🔍 Tìm thấy {findings_count} vấn đề{' trong ' + context if context else ''}"
         
-        return {
+        base_result = {
             "status": "success",
             "summary": summary,
             "total_findings": findings_count,
@@ -302,6 +295,13 @@ def format_scan_results(raw_result: Dict[str, Any], context: str = "") -> Dict[s
             "detailed_results": findings[:10],  # First 10 detailed results
             "note": f"Hiển thị top issues từ {findings_count} kết quả" if findings_count > 10 else None
         }
+        
+        # Apply enhanced formatting if requested
+        if enhanced:
+            from .output_formatter import format_enhanced_scan_results
+            return format_enhanced_scan_results(base_result, scan_target=context)
+        
+        return base_result
         
     except Exception as e:
         logger.error(f"Error formatting scan results: {e}")
@@ -438,6 +438,11 @@ def _scan_code_files_traditional(file_paths: List[str], config: Optional[str] = 
     try:
         # Validate input
         validated_paths = validate_file_paths(file_paths)
+        
+        # Use 'auto' as default config for maximum coverage
+        if config is None:
+            config = "auto"
+            logger.info("Using default 'auto' config for maximum coverage")
         
         # Prepare code files
         code_files = []
@@ -1420,6 +1425,206 @@ def _analyze_project_architecture_traditional(directory_path: str) -> Dict[str, 
         }
 
 
+@handle_errors("agent", "scan_for_secrets")
+def scan_for_secrets(file_paths: List[str], config: Optional[str] = None, intelligent: bool = True) -> Dict[str, Any]:
+    """
+    Scan files để phát hiện secrets và credentials bị hardcode
+    
+    Args:
+        file_paths: Danh sách đường dẫn files cần scan
+        config: Cấu hình Semgrep tùy chỉnh cho secrets
+        intelligent: Có sử dụng intelligent analysis không
+        
+    Returns:
+        Kết quả scan với phân tích secrets chi tiết
+    """
+    try:
+        # Validate file paths
+        validated_paths = validate_file_paths(file_paths)
+        
+        # Prepare code files cho Semgrep
+        code_files = []
+        for file_path in validated_paths:
+            try:
+                content = file_path.read_text(encoding='utf-8', errors='ignore')
+                code_files.append({
+                    "filename": str(file_path),
+                    "content": content
+                })
+            except Exception as e:
+                logger.warning(f"Cannot read file {file_path}: {e}")
+                continue
+        
+        if not code_files:
+            return create_error_response(CodeScanException(
+                code=ErrorCode.INVALID_INPUT,
+                message="No readable files found",
+                severity=ErrorSeverity.MEDIUM,
+                component="agent",
+                operation="scan_for_secrets"
+            ))
+        
+        # Get Semgrep client và scan
+        client = get_semgrep_client()
+        client.start_server()
+        
+        try:
+            # Sử dụng secrets-specific scanning
+            raw_result = client.scan_for_secrets(code_files, config)
+            
+            # Format results
+            formatted_result = format_scan_results(
+                raw_result, 
+                context=f"Secrets scan for {len(code_files)} files"
+            )
+            
+            # Add secrets-specific metadata
+            if "secrets_summary" in raw_result:
+                formatted_result["secrets_analysis"] = raw_result["secrets_summary"]
+                
+            formatted_result["scan_type"] = "secrets_detection"
+            formatted_result["files_scanned"] = len(code_files)
+            
+            return formatted_result
+            
+        finally:
+            client.stop_server()
+            
+    except CodeScanException as e:
+        logger.error(f"Secrets scan error: {e}")
+        return create_error_response(e)
+    except Exception as e:
+        logger.error(f"Unexpected error in secrets scan: {e}")
+        return {
+            "status": "error",
+            "error_message": f"Unexpected error: {str(e)}"
+        }
+
+
+@handle_errors("agent", "scan_android_project")  
+def scan_android_project(directory_path: str, config: Optional[str] = None, intelligent: bool = True) -> Dict[str, Any]:
+    """
+    Scan Android project để phát hiện lỗ hổng bảo mật mobile-specific
+    
+    Args:
+        directory_path: Đường dẫn thư mục Android project
+        config: Cấu hình Semgrep tùy chỉnh cho Android
+        intelligent: Có sử dụng intelligent analysis không
+        
+    Returns:
+        Kết quả scan với phân tích Android security chi tiết
+    """
+    try:
+        # Validate directory  
+        validated_path = validate_directory_path(directory_path)
+        
+        # Get Semgrep client và scan
+        client = get_semgrep_client()
+        client.start_server()
+        
+        try:
+            # Sử dụng Android-specific scanning từ client
+            raw_result = client.scan_android_project([], config)  # Empty list sẽ được handle bởi scan_directory
+            
+            # Nếu không có Android files, fallback sang directory scan với Android rules
+            if raw_result.get("status") == "warning":
+                raw_result = client.scan_directory(str(validated_path), config or "r/java.android r/kotlin.android")
+                
+                # Post-process để add Android context
+                if raw_result.get("status") == "success":
+                    raw_result = client._enhance_android_results(raw_result, raw_result.get("total_findings", 0))
+            
+            # Format results
+            formatted_result = format_scan_results(
+                raw_result, 
+                context=f"Android security scan for {directory_path}"
+            )
+            
+            # Add Android-specific metadata
+            if "android_summary" in raw_result:
+                formatted_result["android_analysis"] = raw_result["android_summary"]
+                
+            formatted_result["scan_type"] = "android_security"
+            formatted_result["project_path"] = str(validated_path)
+            
+            return formatted_result
+            
+        finally:
+            client.stop_server()
+            
+    except CodeScanException as e:
+        logger.error(f"Android scan error: {e}")
+        return create_error_response(e)
+    except Exception as e:
+        logger.error(f"Unexpected error in Android scan: {e}")
+        return {
+            "status": "error",
+            "error_message": f"Unexpected error: {str(e)}"
+        }
+
+
+@handle_errors("agent", "scan_flutter_project")
+def scan_flutter_project(directory_path: str, config: Optional[str] = None, intelligent: bool = True) -> Dict[str, Any]:
+    """
+    Scan Flutter project để phát hiện lỗ hổng bảo mật Flutter/Dart
+    
+    Args:
+        directory_path: Đường dẫn thư mục Flutter project
+        config: Cấu hình Semgrep tùy chỉnh cho Flutter
+        intelligent: Có sử dụng intelligent analysis không
+        
+    Returns:
+        Kết quả scan với phân tích Flutter security chi tiết
+    """
+    try:
+        # Validate directory
+        validated_path = validate_directory_path(directory_path)
+        
+        # Get Semgrep client và scan
+        client = get_semgrep_client()
+        client.start_server()
+        
+        try:
+            # Sử dụng Flutter-specific scanning từ client
+            raw_result = client.scan_flutter_project([], config)  # Empty list sẽ được handle bởi scan_directory
+            
+            # Nếu không có Flutter files, fallback sang directory scan với Dart rules
+            if raw_result.get("status") == "warning":
+                raw_result = client.scan_directory(str(validated_path), config or "r/dart.flutter")
+                
+                # Post-process để add Flutter context
+                if raw_result.get("status") == "success":
+                    raw_result = client._enhance_flutter_results(raw_result, raw_result.get("total_findings", 0))
+            
+            # Format results
+            formatted_result = format_scan_results(
+                raw_result, 
+                context=f"Flutter security scan for {directory_path}"
+            )
+            
+            # Add Flutter-specific metadata
+            if "flutter_summary" in raw_result:
+                formatted_result["flutter_analysis"] = raw_result["flutter_summary"]
+                
+            formatted_result["scan_type"] = "flutter_security"
+            formatted_result["project_path"] = str(validated_path)
+            
+            return formatted_result
+            
+        finally:
+            client.stop_server()
+            
+    except CodeScanException as e:
+        logger.error(f"Flutter scan error: {e}")
+        return create_error_response(e)
+    except Exception as e:
+        logger.error(f"Unexpected error in Flutter scan: {e}")
+        return {
+            "status": "error",
+            "error_message": f"Unexpected error: {str(e)}"
+        }
+
+
 # Định nghĩa root agent với ADK
 root_agent = ADKAgent(
     name="code_scan_agent",
@@ -1432,25 +1637,54 @@ root_agent = ADKAgent(
         "Bạn là một chuyên gia bảo mật code có thể giúp scan và phân tích code để tìm các lỗ hổng bảo mật. "
         "Bạn sử dụng Semgrep - một công cụ static analysis mạnh mẽ để phát hiện:\n"
         "- Lỗ hổng bảo mật (SQL injection, XSS, etc.)\n"
+        "- Secrets và credentials bị hardcode\n"
         "- Code smells và bad practices\n"
         "- Compliance violations\n"
-        "- Custom security rules\n\n"
+        "- Custom security rules\n"
+        "- Lỗ hổng bảo mật mobile/Android/Flutter\n\n"
         "CHỨC NĂNG CHÍNH:\n"
         "1. scan_code_directory(): Scan toàn bộ thư mục/project\n"
         "2. scan_code_files(): Scan danh sách files cụ thể\n"
         "3. analyze_project_architecture(): Phân tích kiến trúc và đưa ra recommendations bảo mật cho toàn bộ project\n"
         "4. analyze_code_structure(): Phân tích AST của một file đơn lẻ\n"
         "5. quick_security_check(): Check nhanh đoạn code snippet\n"
-        "6. scan_with_custom_rule(): Scan với custom rule\n\n"
+        "6. scan_with_custom_rule(): Scan với custom rule\n"
+        "7. scan_for_secrets(): Phát hiện secrets, API keys, passwords hardcode\n"
+        "8. scan_android_project(): Scan bảo mật cho Android project (Java/Kotlin)\n"
+        "9. scan_flutter_project(): Scan bảo mật cho Flutter project (Dart)\n\n"
+        "CHỨC NĂNG NÂNG CAO - SECRETS DETECTION:\n"
+        "- Phát hiện API keys, passwords, tokens bị hardcode\n"
+        "- Phân loại loại secrets (database, API, private keys)\n"
+        "- Đánh giá mức độ rủi ro cho từng secret\n"
+        "- Đưa ra recommendations để secure secrets\n\n"
+        "CHỨC NĂNG NÂNG CAO - MOBILE SECURITY:\n"
+        "- Android: Scan Java/Kotlin, XML manifests, Gradle configs\n"
+        "- Flutter: Scan Dart code, pubspec.yaml, platform channels\n"
+        "- Phát hiện lỗ hổng mobile-specific: permissions, intents, crypto\n"
+        "- Phân tích security configurations cho mobile\n\n"
+        "NGÔN NGỮ VÀ FRAMEWORK HỖ TRỢ:\n"
+        "- Web: Python, JavaScript/TypeScript, Java, C/C++, PHP, Ruby, Go\n"
+        "- Mobile: Kotlin, Dart/Flutter, Java Android, Swift (iOS)\n"
+        "- Config: XML, YAML, JSON, Gradle, Properties\n"
+        "- Infrastructure: Terraform, Docker, Shell scripts\n\n"
         "KHI NGƯỜI DÙNG YÊU CẦU PHÂN TÍCH PROJECT/ARCHITECTURE:\n"
         "- Sử dụng analyze_project_architecture() cho toàn bộ project\n"
         "- Sử dụng analyze_code_structure() cho file đơn lẻ\n"
         "- Đưa ra recommendations về kiến trúc bảo mật, best practices\n\n"
+        "KHI NGƯỜI DÙNG YÊU CẦU SCAN SECRETS:\n"
+        "- Sử dụng scan_for_secrets() để tìm hardcoded credentials\n"
+        "- Phân tích entropy và patterns của potential secrets\n"
+        "- Đưa ra recommendations về secret management\n\n"
+        "KHI NGƯỜI DÙNG YÊU CẦU SCAN MOBILE/ANDROID:\n"
+        "- Sử dụng scan_android_project() cho Android projects\n"
+        "- Sử dụng scan_flutter_project() cho Flutter projects\n"
+        "- Phân tích mobile-specific security issues\n\n"
         "Khi trả lời, hãy:\n"
         "1. Tóm tắt kết quả scan một cách rõ ràng\n"
         "2. Ưu tiên các vấn đề theo mức độ nghiêm trọng\n"
         "3. Đưa ra gợi ý khắc phục cụ thể\n"
-        "4. Giải thích tại sao một vấn đề là nguy hiểm\n\n"
+        "4. Giải thích tại sao một vấn đề là nguy hiểm\n"
+        "5. Đặc biệt chú ý đến secrets và mobile security\n\n"
         "Luôn đảm bảo đưa ra lời khuyên bảo mật thực tế và có thể áp dụng được."
     ),
     tools=[
@@ -1462,6 +1696,9 @@ root_agent = ADKAgent(
         analyze_code_structure,
         analyze_project_architecture,
         get_semgrep_rule_schema,
-        intelligent_project_analysis
+        intelligent_project_analysis,
+        scan_for_secrets,
+        scan_android_project,
+        scan_flutter_project
     ],
 ) 

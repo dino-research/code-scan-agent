@@ -97,8 +97,12 @@ class IntelligentWorkflowOrchestrator:
                 return self._fallback_execution_with_context(context, original_function, *args, **kwargs)
             
             # Save analysis results as artifact (exclude non-serializable context)
-            serializable_result = {k: v for k, v in analysis_result.items() if k != "context"}
-            context.save_artifact("analysis_result", serializable_result, "application/json")
+            try:
+                serializable_result = {k: v for k, v in analysis_result.items() if k != "context" and k != "tool_context"}
+                context.save_artifact("analysis_result", serializable_result, "application/json")
+            except Exception as e:
+                logger.warning(f"Failed to save analysis artifact: {e}")
+                # Continue without saving artifact
             context.complete_step("analysis", analysis_result)
             
             # Step 2: Optimization với context

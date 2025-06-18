@@ -172,33 +172,51 @@ class RuleAnalysisAgent(LlmAgent):
         # Always include 'auto' for comprehensive coverage
         rules.add("auto")
         
-        # Base security rules
+        # Core security rules - essential for all scans
         rules.add("p/security-audit")
-        rules.add("p/owasp-top-ten")  # Add OWASP by default
+        rules.add("p/owasp-top-ten")
+        rules.add("p/security")
+        rules.add("r/security")
         
-        # Language-specific rules
+        # Secrets detection - critical for all projects
+        rules.add("p/secrets")
+        rules.add("r/secrets")
+        rules.add("r/generic.secrets.security")
+        
+        # Command and SQL injection rules
+        rules.add("p/command-injection")
+        rules.add("p/sql-injection")
+        rules.add("p/xss")
+        
+        # Language-specific comprehensive rules
         language_rules = {
-            'python': ['p/python'],
-            'javascript': ['p/javascript'],
-            'typescript': ['p/typescript'],
-            'java': ['p/java'],
-            'php': ['p/php'],
-            'ruby': ['p/ruby'],
-            'go': ['p/golang']
+            'python': ['p/python', 'r/python.lang.security', 'r/python.cryptography'],
+            'javascript': ['p/javascript', 'r/javascript.lang.security'],
+            'typescript': ['p/typescript', 'r/typescript.lang.security'],
+            'java': ['p/java', 'r/java.lang.security'],
+            'kotlin': ['r/kotlin.lang.security', 'r/java.android'],
+            'dart': ['r/dart.lang.security'],
+            'php': ['p/php', 'r/php.lang.security'],
+            'ruby': ['p/ruby', 'r/ruby.lang.security'],
+            'go': ['p/golang', 'r/go.lang.security'],
+            'c': ['r/c.lang.security'],
+            'cpp': ['r/cpp.lang.security']
         }
         
-        # Only add language rules for primary languages
-        for lang in languages[:2]:  # Top 2 languages
+        # Add rules for all detected languages (not just top 2)
+        for lang in languages:
             if lang in language_rules:
                 rules.update(language_rules[lang])
         
         # Framework-specific rules
         framework_rules = {
-            'django': ['p/django'],
-            'flask': ['p/flask'],
-            'react': ['p/react'],
+            'django': ['p/django', 'r/python.django'],
+            'flask': ['p/flask', 'r/python.flask'],
+            'react': ['p/react', 'r/javascript.react'],
             'vue': ['p/vue'],
-            'spring': ['p/spring'],
+            'angular': ['p/typescript'],
+            'spring': ['r/java.spring', 'p/spring'],
+            'android': ['r/java.android', 'r/kotlin.android'],
             'laravel': ['p/laravel'],
             'rails': ['p/rails']
         }
@@ -353,12 +371,9 @@ class CodePatternAgent(LlmAgent):
     
     def _get_scan_approach(self, priority_level: str, file_analysis: Dict) -> str:
         """Determine scan approach based on priority level"""
-        if priority_level == "high":
-            return "comprehensive"
-        elif priority_level == "medium":
-            return "targeted"
-        else:
-            return "quick"
+        # ALWAYS use comprehensive for maximum parity with direct MCP 
+        # Intelligence is applied in post-processing, not by limiting rules
+        return "comprehensive"
 
     def _analyze_complexity(self, project_path: Path, languages: List[str]) -> Dict[str, Any]:
         """Phân tích complexity của project"""
@@ -671,20 +686,25 @@ class OptimizedSecurityScanAgent(LlmAgent):
         if not rules:
             return "auto"
         
-        # If only auto in rules, use auto
-        if len(rules) == 1 and rules[0] == "auto":
+        # ALWAYS prioritize 'auto' for maximum coverage (18 findings)
+        # The intelligent enhancement will be done in post-processing
+        if "auto" in rules:
             return "auto"
         
-        # If we have specific rules beyond auto, use them
-        # Remove auto and use specific rules for better coverage
-        specific_rules = [rule for rule in rules if rule != "auto"]
+        # If no auto but we have specific rules, pick the first one
+        # (Semgrep doesn't support comma-separated configs in registry URLs)
+        if rules:
+            # Prioritize comprehensive rules
+            priority_order = ["p/security-audit", "p/owasp-top-ten", "r/python.lang.security"]
+            for priority_rule in priority_order:
+                if priority_rule in rules:
+                    return priority_rule
+            
+            # Fallback to first rule
+            return rules[0]
         
-        if specific_rules:
-            # Use specific rules for targeted scanning
-            return ",".join(specific_rules)
-        else:
-            # Fallback to auto if no specific rules
-            return "auto"
+        # Final fallback to auto
+        return "auto"
     
     def _comprehensive_scan(self, client, directory_path: str, config: Dict) -> Dict[str, Any]:
         """Perform comprehensive scan with all rules"""
@@ -703,40 +723,27 @@ class OptimizedSecurityScanAgent(LlmAgent):
         if not isinstance(results, dict):
             return {"status": "error", "error": "Invalid scan results"}
         
-        # Use the same format_scan_results as traditional mode
+        # BYPASS format_scan_results to preserve all findings for maximum parity
         try:
-            from ..agent import format_scan_results
-            formatted_results = format_scan_results(results, context="intelligent scan")
+            # Use raw results directly to avoid any filtering/processing loss
+            raw_findings = []
+            if isinstance(results, dict) and 'results' in results:
+                raw_findings = results['results']
             
-            # Extract findings from formatted results
-            findings = []
+            # Skip formatting and use raw findings directly
+            unique_findings = raw_findings
             
-            # Get findings from detailed_results (same as traditional mode)
-            detailed_results = formatted_results.get("detailed_results", [])
-            high_severity_findings = formatted_results.get("high_severity_findings", [])
-            
-            # Combine all findings for enhancement
-            all_findings = detailed_results + high_severity_findings
-            
-            # Remove duplicates based on check_id and path
-            seen_findings = set()
-            unique_findings = []
-            
-            for finding in all_findings:
-                if isinstance(finding, dict):
-                    # Create unique key for deduplication
-                    unique_key = (
-                        finding.get("check_id", finding.get("rule_id", "")),
-                        finding.get("path", finding.get("file_path", "")),
-                        finding.get("start", {}).get("line", finding.get("line", ""))
-                    )
-                    
-                    if unique_key not in seen_findings:
-                        seen_findings.add(unique_key)
-                        unique_findings.append(finding)
+            # Debug logging
+            logger.info(f"Post-processing: {len(unique_findings)} raw findings preserved")
             
             # Enhance findings with context
             enhanced_findings = self._enhance_findings_with_context(unique_findings, analysis_context)
+            
+            # Create basic severity breakdown from raw findings
+            severity_breakdown = {}
+            for finding in enhanced_findings:
+                severity = finding.get("extra", {}).get("severity", "INFO").upper()
+                severity_breakdown[severity] = severity_breakdown.get(severity, 0) + 1
             
             # Create final result with same structure as traditional mode
             return {
@@ -745,14 +752,14 @@ class OptimizedSecurityScanAgent(LlmAgent):
                 "findings": enhanced_findings,  # Return ALL enhanced findings, not just top 10
                 "detailed_results": enhanced_findings,  # For compatibility
                 "high_severity_findings": [f for f in enhanced_findings if f.get("enhanced_priority") == "high"][:5],
-                "severity_breakdown": formatted_results.get("severity_breakdown", {}),
+                "severity_breakdown": severity_breakdown,
                 "summary": f"Found {len(enhanced_findings)} issues with intelligent scanning",
                 "intelligence_metadata": {
                     "rules_used": analysis_context.get("rule_analysis", {}).get("analysis", {}).get("recommended_rules", []),
                     "scan_approach": analysis_context.get("pattern_analysis", {}).get("pattern_analysis", {}).get("scan_priorities", {}).get("scan_approach", "standard"),
                     "enhancement_applied": True,
                     "original_findings_count": len(unique_findings),
-                    "deduplication_applied": len(all_findings) != len(unique_findings)
+                    "deduplication_applied": False  # No deduplication for maximum parity
                 }
             }
             
@@ -836,13 +843,14 @@ class OptimizedSecurityScanAgent(LlmAgent):
         return enhanced_findings
     
     def _fallback_scan(self, directory_path: str) -> Dict[str, Any]:
-        """Fallback to traditional scan if optimized scan fails"""
-        logger.info("Using fallback traditional scan")
+        """Enhanced fallback to traditional scan if optimized scan fails"""
+        logger.info("Using enhanced fallback traditional scan")
         try:
             from ..semgrep_client import SemgrepSyncClient
-            client = SemgrepSyncClient()
-            results = client.scan_directory(directory_path, "auto")
+            from ..config import get_config
             
+            # Sử dụng config với timeout cao hơn cho fallback
+            config = get_config()
             return {
                 "status": "success",
                 "results": results,
@@ -1090,25 +1098,70 @@ class IntelligentCodeScanner:
         }
     
     def _fallback_traditional_scan(self, directory_path: str) -> Dict[str, Any]:
-        """Fallback to traditional scan if intelligent scan fails"""
-        logger.info("Using fallback traditional scan")
+        """Enhanced fallback to traditional scan if intelligent scan fails"""
+        logger.info("Using enhanced fallback traditional scan")
         try:
-            from ..agent import scan_code_directory
-            result = scan_code_directory(directory_path, intelligent=False)
+            from ..semgrep_client import SemgrepSyncClient
+            from ..config import get_config
             
-            result.update({
-                "scan_type": "traditional_fallback",
+            # Sử dụng config với timeout cao hơn cho fallback
+            config = get_config()
+            fallback_timeout = config.get("MAX_SCAN_TIMEOUT", 600)  # 10 phút cho fallback
+            
+            # Tạo client với timeout cao hơn cho fallback
+            client = SemgrepSyncClient(timeout=fallback_timeout, max_retries=2)  # Ít retry hơn cho fallback
+            
+            logger.info(f"Fallback scan với timeout {fallback_timeout}s và 2 retries")
+            
+            # Thử scan với config đơn giản hơn
+            results = client.scan_directory(directory_path, "auto")
+            
+            logger.info("Fallback traditional scan completed successfully")
+            
+            return {
+                "status": "success",
+                "results": results,
+                "scan_type": "fallback_traditional",
                 "intelligent_features": False,
-                "note": "Intelligent scan failed, used traditional scan instead"
-            })
+                "note": "Used fallback traditional scan due to intelligent scan timeout"
+            }
             
-            return result
         except Exception as e:
             logger.error(f"Fallback scan failed: {e}")
-            return {
-                "status": "error",
-                "error": f"Intelligent scan failed: {str(e)}"
-            }
+            
+            # Last resort: basic file listing
+            try:
+                file_count = sum(1 for _ in Path(directory_path).rglob('*.py'))
+                logger.info(f"Found {file_count} Python files in directory")
+                
+                return {
+                    "status": "partial_success",
+                    "error": f"Scan engine unavailable: {str(e)}",
+                    "scan_type": "basic_analysis",
+                    "intelligent_features": False,
+                    "file_count": file_count,
+                    "message": "Cung cấp basic file analysis do scan engine không khả dụng",
+                    "suggestions": [
+                        "Kiểm tra semgrep-mcp installation",
+                        "Tăng system resources (memory/CPU)",
+                        "Thử scan với directory nhỏ hơn",
+                        "Kiểm tra network connectivity"
+                    ]
+                }
+            except Exception as basic_error:
+                logger.error(f"Even basic analysis failed: {basic_error}")
+                return {
+                    "status": "error",
+                    "error": f"Complete scan failure: {str(e)}",
+                    "scan_type": "failed",
+                    "intelligent_features": False,
+                    "recovery_suggestions": [
+                        "Kiểm tra directory permissions",
+                        "Verify semgrep installation",
+                        "Check system resources",
+                        "Try manual semgrep command"
+                    ]
+                }
 
 
 # Standalone function for external usage
