@@ -33,16 +33,12 @@ if [ -f "$ENV_FILE" ]; then
         echo "2. Get API key from: https://aistudio.google.com/app/apikey"
         echo ""
         echo "After configuration, run:"
-        echo "  python test_agent.py    # Test the agent"
         echo "  adk web                 # Run Web UI"
         echo ""
         exit 1
     fi
 fi
 
-# Run tests
-echo "🧪 Running tests..."
-python test_agent.py
 
 if [ $? -eq 0 ]; then
     echo ""
