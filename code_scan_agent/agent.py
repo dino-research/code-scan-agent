@@ -720,17 +720,17 @@ def _scan_with_custom_rule_traditional(code_content: str, rule: str, language: s
         }
 
 
-def get_supported_languages(intelligent: bool = True) -> Dict[str, Any]:
+def get_supported_languages(intelligent: bool = False) -> Dict[str, Any]:
     """
     Lấy danh sách ngôn ngữ lập trình được hỗ trợ với intelligent enhancements
     
     Args:
-        intelligent (bool): Sử dụng intelligent workflow (mặc định: True)
+        intelligent (bool): Sử dụng intelligent workflow (mặc định: False - temporary disabled)
     
     Returns:
         dict: Danh sách ngôn ngữ và thông tin liên quan với intelligent features
     """
-    # Intelligent workflow mode
+    # Intelligent workflow mode - temporarily disabled due to LanguagesWorkflow not implemented
     if intelligent:
         try:
             from .intelligent.workflows import apply_intelligent_workflow
@@ -745,7 +745,7 @@ def get_supported_languages(intelligent: bool = True) -> Dict[str, Any]:
             logger.warning(f"Intelligent workflow failed, falling back to traditional: {e}")
             # Fall through to traditional mode
     
-    # Traditional mode
+    # Traditional mode (default for now)
     return _get_supported_languages_traditional()
 
 

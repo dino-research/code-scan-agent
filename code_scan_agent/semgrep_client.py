@@ -844,10 +844,28 @@ class SemgrepSyncClient:
             
             # Handle different response formats
             if isinstance(result, dict):
+                # Standard MCP response format
                 if "content" in result and isinstance(result["content"], list):
                     return result["content"]
                 elif isinstance(result.get("result"), list):
                     return result["result"]
+                
+                # Handle raw_output format (plain text response)
+                if "raw_output" in result:
+                    raw_text = result["raw_output"]
+                    if isinstance(raw_text, str) and "supported languages are:" in raw_text:
+                        # Parse the text format: "supported languages are: lang1, lang2, ..."
+                        try:
+                            # Extract languages after the colon
+                            languages_part = raw_text.split("supported languages are:")[-1].strip()
+                            # Split by comma and clean up each language
+                            languages = [lang.strip() for lang in languages_part.split(",")]
+                            # Filter out empty strings
+                            languages = [lang for lang in languages if lang]
+                            logger.info(f"Parsed {len(languages)} languages from raw_output")
+                            return languages
+                        except Exception as parse_error:
+                            logger.error(f"Failed to parse raw_output: {parse_error}")
             
             logger.warning(f"Unexpected response format for supported languages: {result}")
             return []
